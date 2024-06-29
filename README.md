@@ -1,2 +1,2 @@
-# project-llama
+# project-quokka
 My personal AI assistant
