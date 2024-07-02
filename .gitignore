@@ -1,3 +1,9 @@
 # Environmental Variables
 .env
 environment.*
+
+# Node Modules
+node_modules/
+
+# Build Files
+listener.py
