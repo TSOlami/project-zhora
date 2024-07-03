@@ -4,7 +4,7 @@ import os
 from pyaudio import PyAudio, paInt16
 
 def recognize_speech_from_microphone():
-    model_path = "models/vosk-model-en-us-0.42-gigaspeech"
+    model_path = r"C:\Users\teejay\www\my projects\project-zhora\models\vosk-model-small-en-us-0.15"
     if not os.path.exists(model_path):
         print(f"Model not found at {model_path}")
         return ""
