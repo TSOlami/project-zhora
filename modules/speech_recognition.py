@@ -1,4 +1,3 @@
-# modules/speech_recognition.py
 import vosk
 import json
 import os
@@ -22,6 +21,7 @@ def recognize_speech_from_microphone():
         data = stream.read(4096, exception_on_overflow=False)
         if recognizer.AcceptWaveform(data):
             result = json.loads(recognizer.Result())
+            print(f"Result: {result}")
             text = result.get('text', '')
             print(f"Recognized: {text}")
             return text
