@@ -10,3 +10,6 @@ listener.py
 
 # Models
 models
+
+# Build Files
+__pycache__/
