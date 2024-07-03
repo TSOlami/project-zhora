@@ -1,2 +1,2 @@
-# project-quokka
+# project-zhora
 My personal AI assistant
