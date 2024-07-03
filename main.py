@@ -8,7 +8,6 @@ def main():
     print("Listening for trigger word...")
     while True:
         text = recognize_speech_from_microphone()
-        print(f"Recognized: {text}")
         # if detect_trigger_word(text):
         #     print("Trigger word detected. Listening for command...")
         #     command = recognize_speech_from_microphone()
