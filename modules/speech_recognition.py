@@ -1,30 +1,52 @@
-import vosk
-import json
-import os
-from pyaudio import PyAudio, paInt16
+import pyaudio
+import struct
+from models.create_model_instance import create_leopard_instance
 
-def recognize_speech_from_microphone():
-    model_path = r"C:\Users\teejay\www\my projects\project-zhora\models\vosk-model-small-en-us-0.15"
-    if not os.path.exists(model_path):
-        print(f"Model not found at {model_path}")
-        return ""
-    
-    model = vosk.Model(model_path)
-    recognizer = vosk.KaldiRecognizer(model, 16000)
-    
-    mic = PyAudio()
-    stream = mic.open(format=paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8192)
-    stream.start_stream()
 
-    print("Listening...")
-    while True:
-        data = stream.read(4096, exception_on_overflow=False)
-        if recognizer.AcceptWaveform(data):
-            result = json.loads(recognizer.Result())
-            print(f"Result: {result}")
-            text = result.get('text', '')
-            print(f"Recognized: {text}")
-            return text
-        elif recognizer.PartialResult():
-            partial_result = json.loads(recognizer.PartialResult())
-            print(f"Partial: {partial_result.get('partial', '')}")
+def listen_for_command():
+    leopard = None
+    audio = None
+    stream = None
+
+    try:
+        leopard = create_leopard_instance()
+        audio = pyaudio.PyAudio()
+        stream = audio.open(
+            rate=leopard.sample_rate,
+            channels=1,
+            format=pyaudio.paInt16,
+            input=True,
+            frames_per_buffer=leopard.frame_length
+        )
+        stream.start_stream()
+
+        print("Listening for command...")
+        frames = []
+        while True:
+            pcm = stream.read(leopard.frame_length, exception_on_overflow=False)
+            pcm = struct.unpack_from("h" * leopard.frame_length, pcm)
+            frames.extend(pcm)
+
+            if len(frames) >= leopard.sample_rate * 5:  # 5 seconds buffer
+                result = leopard.process(frames)
+                text = result.transcript
+                print(f"Recognized: {text}")
+                return text
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+    finally:
+        if leopard is not None:
+            leopard.delete()
+        if stream is not None:
+            stream.stop_stream()
+            stream.close()
+        if audio is not None:
+            audio.terminate()
+        if leopard is not None:
+            leopard.delete()
+        if stream is not None:
+            stream.stop_stream()
+            stream.close()
+        if audio is not None:
+            audio.terminate()
