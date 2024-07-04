@@ -9,7 +9,7 @@ node_modules/
 listener.py
 
 # Models
-models
+porcupine
 
 # Build Files
 __pycache__/
