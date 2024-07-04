@@ -2,6 +2,9 @@
 .env
 environment.*
 
+# Config Files
+config.*
+
 # Node Modules
 node_modules/
 
