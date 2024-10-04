@@ -1,2 +1,2 @@
 # project-zhora
-My personal AI assistant
+Building my personal AI assistant for task automation using AIOS
