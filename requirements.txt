@@ -1,1 +1,2 @@
-pyttsx3
+pvporcupine==3.0.3
+pyttsx3==2.98
