@@ -2,6 +2,10 @@
 .env
 environment.*
 
+# Virtual Environment
+venv/
+.venv/
+
 # Config Files
 config.*
 
