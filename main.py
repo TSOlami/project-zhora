@@ -16,7 +16,7 @@ def main():
                 processed_command = process_command(command)
                 response = get_response_from_model(processed_command)
                 print(response)
-        #         speak_text(response)
+                #speak_text(response)
 
 if __name__ == "__main__":
     main()
