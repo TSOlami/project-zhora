@@ -13,7 +13,7 @@ def main():
             if command:
                 print(command)
                 processed_command = process_command(command)
-                response = get_response_from_model(processed_command)
+                response, _tool_calls = get_response_from_model(processed_command)
                 print(response)
                 speak_text(response)
 

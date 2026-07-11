@@ -14,25 +14,53 @@
       </div>
       <div id="chat-list"></div>
       <div class="sidebar-footer">
-        <button id="tools-btn">Tools</button>
-        <button id="settings-btn">Settings</button>
+        <button id="canvas-btn" class="icon-label-btn" title="Canvas">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          <span>Canvas</span>
+        </button>
+        <button id="tools-btn" class="icon-label-btn" title="Tools">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          <span>Tools</span>
+        </button>
       </div>
     </aside>
     <main id="main">
       <div id="topbar">
-        <span id="status-dot" class="dot idle"></span>
+        <div id="voice-orb" class="idle"></div>
         <span id="status-text">idle</span>
         <div id="engine-controls">
           <button id="engine-start" title="Start">Start</button>
           <button id="engine-stop" title="Stop">Stop</button>
           <button id="engine-restart" title="Restart">Restart</button>
         </div>
+        <button id="settings-btn" class="icon-btn" title="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
       </div>
-      <div id="messages"></div>
-      <form id="input-form">
-        <input id="input-box" type="text" placeholder="Message Zhora..." autocomplete="off" />
-        <button type="submit">Send</button>
-      </form>
+      <div id="content-area">
+        <div id="chat-area">
+          <div id="messages"></div>
+          <form id="input-form">
+            <button type="button" id="mic-btn" class="icon-btn" title="Push to talk">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            </button>
+            <input id="input-box" type="text" placeholder="Message Zhora..." autocomplete="off" />
+            <button type="submit" id="send-btn" class="icon-btn primary" title="Send">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </form>
+        </div>
+        <div id="canvas-panel" class="hidden">
+          <div class="canvas-header">
+            <span>Canvas</span>
+            <div>
+              <button id="canvas-copy" title="Copy">Copy</button>
+              <button id="canvas-close" title="Close">✕</button>
+            </div>
+          </div>
+          <pre id="canvas-content"><code id="canvas-code"></code></pre>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -62,9 +90,16 @@
         <input id="require-confirmation" type="checkbox" />
         Require confirmation for tool calls
       </label>
-      <div class="modal-actions">
-        <button id="settings-close">Close</button>
-        <button id="settings-save" class="primary">Save</button>
+      <label class="checkbox">
+        <input id="auto-speak" type="checkbox" />
+        Automatically speak responses aloud
+      </label>
+      <div class="modal-actions" style="justify-content: space-between;">
+        <button id="create-shortcut-btn">Create Desktop Shortcut</button>
+        <div>
+          <button id="settings-close">Close</button>
+          <button id="settings-save" class="primary">Save</button>
+        </div>
       </div>
     </div>
   </div>
@@ -73,6 +108,12 @@
     <div class="modal-content">
       <h3>Tools</h3>
       <div id="tools-list"></div>
+      <p class="hint">Items marked "always confirms" ignore the global confirmation setting - plugins, PC control, and MCP servers can't be run without explicit approval.</p>
+      <label>Add MCP server
+        <input id="mcp-label" type="text" placeholder="Label (e.g. Filesystem)" />
+        <input id="mcp-command" type="text" placeholder="Command (e.g. npx -y @modelcontextprotocol/server-filesystem C:/some/dir)" style="margin-top: 6px;" />
+      </label>
+      <button id="mcp-add-btn">Add Server</button>
       <div class="modal-actions">
         <button id="tools-close">Close</button>
       </div>

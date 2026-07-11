@@ -1,6 +1,5 @@
 import threading
 
-from config import REQUIRE_TOOL_CONFIRMATION
 from modules.shared_state import engine_state
 
 CONFIRMATION_TIMEOUT_SECONDS = 20
@@ -28,20 +27,18 @@ def _listen_for_terminal_confirmation(req):
         req.resolve("approve" if answer == "y" else "deny")
 
 
-def confirm_tool_call(function_name, function_call, arguments):
-    """Agno tool_hook: gate every tool call behind explicit approval.
+def request_confirmation(function_name, arguments):
+    """Block until a pending tool call is approved or denied.
 
     Approval can come from a spoken "yes"/"no", a typed y/N in the terminal, or
     (when the desktop UI is open) a button click resolving the same pending
     request via engine_state.resolve_confirmation(). Whichever answers first
     wins. Fails closed: no answer within the timeout, or anything other than
-    an explicit approval, blocks the call. This project intentionally runs an
+    an explicit approval, denies. This project intentionally runs an
     uncensored model with no other safety net between a voice command and a
-    tool executing.
+    tool executing - callers (model_interaction.py) must not invoke the tool
+    unless this returns "approve".
     """
-    if not REQUIRE_TOOL_CONFIRMATION:
-        return function_call(**arguments)
-
     req = engine_state.begin_confirmation(function_name, arguments)
 
     print(f"\n[Confirmation required] Run tool '{function_name}' with arguments: {arguments}")
@@ -55,6 +52,5 @@ def confirm_tool_call(function_name, function_call, arguments):
 
     if result != "approve":
         print(f"Blocked tool call: {function_name}")
-        return f"User denied permission to run tool '{function_name}'."
-
-    return function_call(**arguments)
+        return "deny"
+    return "approve"

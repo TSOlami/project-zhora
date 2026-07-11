@@ -1,25 +1,65 @@
 let api = null;
 let activeChatId = null;
+let streamingRow = null;
+let pendingToolNames = null;
 
 const chatListEl = document.getElementById("chat-list");
 const messagesEl = document.getElementById("messages");
 const inputForm = document.getElementById("input-form");
 const inputBox = document.getElementById("input-box");
-const statusDot = document.getElementById("status-dot");
+const micBtn = document.getElementById("mic-btn");
+const voiceOrb = document.getElementById("voice-orb");
 const statusText = document.getElementById("status-text");
 
 function setStatus(status) {
-  statusDot.className = "dot " + status;
+  voiceOrb.className = status;
   statusText.textContent = status.replace(/_/g, " ");
+  micBtn.classList.toggle("recording", status === "listening_for_command");
 }
 
-function addBubble(role, content) {
+function setAmplitude(value) {
+  // Rough int16-amplitude-to-scale mapping; clamps so quiet rooms don't look dead
+  // and loud input doesn't blow past a sane visual ceiling.
+  const scale = 1 + Math.min(value / 4000, 1) * 0.6;
+  voiceOrb.style.transform = `scale(${scale.toFixed(2)})`;
+}
+
+function makeSpeakButton(text) {
+  const btn = document.createElement("button");
+  btn.className = "speak-btn";
+  btn.title = "Read aloud";
+  btn.textContent = "🔊";
+  btn.onclick = () => api.speak_message(text);
+  return btn;
+}
+
+function addMessageRow(role, content, toolNames) {
+  const row = document.createElement("div");
+  row.className = "message-row " + (role === "user" ? "user" : "assistant");
+
+  if (toolNames && toolNames.length) {
+    const annotation = document.createElement("div");
+    annotation.className = "tool-annotation";
+    annotation.textContent = "Used " + toolNames.join(", ");
+    row.appendChild(annotation);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "bubble-wrap";
+
   const bubble = document.createElement("div");
   bubble.className = "bubble " + (role === "user" ? "user" : "assistant");
   bubble.textContent = content;
-  messagesEl.appendChild(bubble);
+  wrap.appendChild(bubble);
+
+  if (role === "assistant") {
+    wrap.appendChild(makeSpeakButton(content));
+  }
+
+  row.appendChild(wrap);
+  messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
-  return bubble;
+  return { row, bubble, wrap };
 }
 
 async function loadChatList() {
@@ -49,11 +89,11 @@ async function createChat() {
 
 async function switchChat(chatId) {
   activeChatId = chatId;
+  streamingRow = null;
   await api.switch_chat(chatId);
   const messages = await api.get_messages(chatId);
   messagesEl.innerHTML = "";
-  messages.forEach((m) => addBubble(m.role, m.content));
-  Array.from(chatListEl.children).forEach((el, i) => {});
+  messages.forEach((m) => addMessageRow(m.role, m.content));
   await loadChatList();
 }
 
@@ -61,7 +101,7 @@ async function sendMessage(text) {
   if (!activeChatId) {
     await createChat();
   }
-  addBubble("user", text);
+  addMessageRow("user", text);
   await api.send_message(activeChatId, text);
 }
 
@@ -74,6 +114,14 @@ inputForm.addEventListener("submit", (e) => {
 });
 
 document.getElementById("new-chat-btn").onclick = () => createChat();
+
+micBtn.onclick = async () => {
+  if (!activeChatId) await createChat();
+  const result = await api.start_voice_input(activeChatId);
+  if (!result.ok) {
+    statusText.textContent = result.error || "Busy";
+  }
+};
 
 document.getElementById("engine-start").onclick = () => api.start_engine();
 document.getElementById("engine-stop").onclick = () => api.stop_engine();
@@ -112,6 +160,7 @@ document.getElementById("settings-btn").onclick = async () => {
   });
   document.getElementById("wake-word-path").value = settings.wake_word_model_path;
   document.getElementById("require-confirmation").checked = settings.require_tool_confirmation;
+  document.getElementById("auto-speak").checked = settings.auto_speak_responses;
   settingsModal.classList.remove("hidden");
 };
 document.getElementById("settings-close").onclick = () => settingsModal.classList.add("hidden");
@@ -119,39 +168,123 @@ document.getElementById("settings-save").onclick = async () => {
   const model = document.getElementById("model-select").value;
   const wakeWordPath = document.getElementById("wake-word-path").value;
   const requireConfirmation = document.getElementById("require-confirmation").checked;
+  const autoSpeak = document.getElementById("auto-speak").checked;
   await api.set_current_model(model);
   await api.set_setting("WAKE_WORD_MODEL_PATH", wakeWordPath);
   await api.set_setting("REQUIRE_TOOL_CONFIRMATION", requireConfirmation ? "true" : "false");
+  await api.set_setting("AUTO_SPEAK_RESPONSES", autoSpeak ? "true" : "false");
   settingsModal.classList.add("hidden");
+};
+document.getElementById("create-shortcut-btn").onclick = async () => {
+  const btn = document.getElementById("create-shortcut-btn");
+  const result = await api.create_desktop_shortcut();
+  btn.textContent = result.ok ? "Shortcut created!" : "Failed - see console";
+  setTimeout(() => (btn.textContent = "Create Desktop Shortcut"), 2000);
 };
 
 // --- Tools modal ---
 const toolsModal = document.getElementById("tools-modal");
-document.getElementById("tools-btn").onclick = async () => {
+
+async function refreshToolsList() {
   const tools = await api.list_tools();
   const list = document.getElementById("tools-list");
   list.innerHTML = "";
   tools.forEach((tool) => {
     const row = document.createElement("div");
     row.className = "tool-item";
+    const badge = tool.always_confirm ? '<span class="tool-badge">always confirms</span>' : "";
+    const removeBtn = tool.kind === "mcp" ? '<button class="mcp-remove" title="Remove server">✕</button>' : "";
     row.innerHTML = `
       <div>
-        <div class="tool-label">${tool.label}</div>
+        <div class="tool-label">${tool.label}${badge}</div>
         <div class="tool-desc">${tool.description}</div>
       </div>
-      <input type="checkbox" ${tool.enabled ? "checked" : ""} data-tool-id="${tool.id}" />
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" ${tool.enabled ? "checked" : ""} data-tool-id="${tool.id}" />
+        ${removeBtn}
+      </div>
     `;
     row.querySelector("input").onchange = (e) => {
       api.set_tool_enabled(tool.id, e.target.checked);
     };
+    const removeEl = row.querySelector(".mcp-remove");
+    if (removeEl) {
+      removeEl.onclick = async () => {
+        await api.remove_mcp_server(tool.id.replace(/^mcp:/, ""));
+        refreshToolsList();
+      };
+    }
     list.appendChild(row);
   });
+}
+
+document.getElementById("tools-btn").onclick = async () => {
+  await refreshToolsList();
   toolsModal.classList.remove("hidden");
 };
 document.getElementById("tools-close").onclick = () => toolsModal.classList.add("hidden");
+document.getElementById("mcp-add-btn").onclick = async () => {
+  const label = document.getElementById("mcp-label").value.trim();
+  const command = document.getElementById("mcp-command").value.trim();
+  if (!label || !command) return;
+  await api.add_mcp_server(label, command);
+  document.getElementById("mcp-label").value = "";
+  document.getElementById("mcp-command").value = "";
+  await refreshToolsList();
+};
+
+// --- Canvas panel ---
+const canvasPanel = document.getElementById("canvas-panel");
+const canvasCode = document.getElementById("canvas-code");
+let canvasRawText = "";
+
+const CODE_BLOCK_RE = /```(\w*)\n([\s\S]*?)```/g;
+const KEYWORDS = new Set([
+  "def", "class", "return", "if", "elif", "else", "for", "while", "import", "from",
+  "function", "const", "let", "var", "async", "await", "try", "except", "catch",
+  "finally", "with", "as", "in", "not", "and", "or", "true", "false", "none", "null",
+  "public", "private", "static", "void", "new",
+]);
+
+function highlight(code) {
+  const escaped = code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const lines = escaped.split("\n").map((line) => {
+    let tokenized = line.replace(/(#.*|\/\/.*)/, '<span class="tok-comment">$1</span>');
+    tokenized = tokenized.replace(/(&quot;.*?&quot;|'.*?'|".*?")/g, '<span class="tok-string">$1</span>');
+    tokenized = tokenized.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
+    tokenized = tokenized.replace(
+      new RegExp(`\\b(${[...KEYWORDS].join("|")})\\b`, "gi"),
+      '<span class="tok-keyword">$1</span>'
+    );
+    return tokenized;
+  });
+  return lines.join("\n");
+}
+
+function showCanvasFromResponse(text) {
+  const matches = [...text.matchAll(CODE_BLOCK_RE)];
+  if (matches.length === 0) return;
+  const last = matches[matches.length - 1];
+  canvasRawText = last[2];
+  canvasCode.innerHTML = highlight(canvasRawText);
+  canvasPanel.classList.remove("hidden");
+}
+
+document.getElementById("canvas-btn").onclick = () => canvasPanel.classList.toggle("hidden");
+document.getElementById("canvas-close").onclick = () => canvasPanel.classList.add("hidden");
+document.getElementById("canvas-copy").onclick = () => navigator.clipboard.writeText(canvasRawText);
 
 // --- Engine event pump (pushed from Python via window.evaluate_js) ---
 window.onZhoraEvent = (event) => {
+  if (event.status === "amplitude") {
+    setAmplitude(event.detail.value);
+    return;
+  }
+
   setStatus(event.status);
 
   if (event.status === "awaiting_confirmation" && event.detail) {
@@ -160,9 +293,34 @@ window.onZhoraEvent = (event) => {
     confirmModal.classList.add("hidden");
   }
 
+  if (event.status === "tool_calls" && event.detail && event.detail.chat_id === activeChatId) {
+    pendingToolNames = event.detail.tool_calls.map((t) => t.name);
+  }
+
+  if (event.status === "responding" && event.detail && event.detail.chat_id === activeChatId) {
+    streamingRow = addMessageRow("assistant", "", pendingToolNames);
+    pendingToolNames = null;
+  }
+
+  if (
+    event.status === "streaming_chunk" &&
+    event.detail &&
+    event.detail.chat_id === activeChatId &&
+    streamingRow
+  ) {
+    streamingRow.bubble.textContent += event.detail.delta;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   if (event.status === "idle" && event.detail && event.detail.response) {
     if (event.detail.chat_id === activeChatId) {
-      addBubble("assistant", event.detail.response);
+      if (streamingRow) {
+        streamingRow.bubble.textContent = event.detail.response;
+        streamingRow = null;
+      } else {
+        addMessageRow("assistant", event.detail.response);
+      }
+      showCanvasFromResponse(event.detail.response);
     }
   }
 };

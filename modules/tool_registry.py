@@ -4,27 +4,35 @@ import os
 from agno.tools.calculator import CalculatorTools
 from agno.tools.duckduckgo import DuckDuckGoTools
 
-from config import DATA_DIR
+from config import DATA_DIR, REQUIRE_TOOL_CONFIRMATION
 
 TOOLS_CONFIG_PATH = os.path.join(DATA_DIR, "tools_config.json")
 
 # Known, vetted toolkits only - this is a fixed registry the user picks from,
-# not an install-anything marketplace. See README's safety note on why that
-# matters for a project that runs an unrestricted model with no other gate.
+# not an install-anything marketplace (see plugin_registry.py / mcp_registry.py
+# for the extensible sources). `always_confirm` toolkits ignore
+# REQUIRE_TOOL_CONFIRMATION entirely - a non-negotiable safety floor for
+# anything that touches the filesystem, other processes, or the machine itself.
 AVAILABLE_TOOLS = {
     "web_search": {
         "label": "Web Search (DuckDuckGo)",
         "description": "Search the web for current information.",
         "factory": DuckDuckGoTools,
+        "always_confirm": False,
     },
     "calculator": {
         "label": "Calculator",
         "description": "Perform arithmetic calculations.",
         "factory": CalculatorTools,
+        "always_confirm": False,
     },
 }
 
 DEFAULT_ENABLED = {"web_search", "calculator"}
+
+# MCP server tool ids are prefixed so set_tool_enabled can route unambiguously
+# without a fragile try-each-registry-until-one-doesn't-raise chain.
+MCP_ID_PREFIX = "mcp:"
 
 
 def _load_enabled_ids():
@@ -44,31 +52,80 @@ def _save_enabled_ids(enabled_ids):
 
 
 def list_tools():
-    """Every known tool with its current enabled state, for the settings UI."""
+    """Every known tool (built-in + plugins + MCP servers) with its current enabled state, for the settings UI."""
+    from modules.mcp_registry import list_mcp_servers
+    from modules.plugin_registry import list_plugins
+
     enabled_ids = _load_enabled_ids()
-    return [
+    tools = [
         {
             "id": tool_id,
             "label": meta["label"],
             "description": meta["description"],
             "enabled": tool_id in enabled_ids,
+            "always_confirm": meta["always_confirm"],
+            "kind": "built-in",
         }
         for tool_id, meta in AVAILABLE_TOOLS.items()
     ]
+    tools.extend(list_plugins())
+    tools.extend(
+        {
+            "id": f"{MCP_ID_PREFIX}{server['id']}",
+            "label": server["label"],
+            "description": server["command"],
+            "enabled": server.get("enabled", False),
+            "always_confirm": True,
+            "kind": "mcp",
+        }
+        for server in list_mcp_servers()
+    )
+    return tools
 
 
 def set_tool_enabled(tool_id, enabled):
-    if tool_id not in AVAILABLE_TOOLS:
-        raise ValueError(f"Unknown tool: {tool_id}")
-    enabled_ids = _load_enabled_ids()
-    if enabled:
-        enabled_ids.add(tool_id)
-    else:
-        enabled_ids.discard(tool_id)
-    _save_enabled_ids(enabled_ids)
+    if tool_id in AVAILABLE_TOOLS:
+        enabled_ids = _load_enabled_ids()
+        if enabled:
+            enabled_ids.add(tool_id)
+        else:
+            enabled_ids.discard(tool_id)
+        _save_enabled_ids(enabled_ids)
+        return
+
+    if tool_id.startswith(MCP_ID_PREFIX):
+        from modules.mcp_registry import set_mcp_server_enabled
+
+        set_mcp_server_enabled(tool_id[len(MCP_ID_PREFIX) :], enabled)
+        return
+
+    from modules.plugin_registry import set_plugin_enabled
+
+    set_plugin_enabled(tool_id, enabled)
+
+
+def _instantiate_gated(factory, always_confirm):
+    """Instantiate a toolkit, forcing confirmation on all its functions if
+    always_confirm is set OR the global REQUIRE_TOOL_CONFIRMATION is on.
+    """
+    if not (always_confirm or REQUIRE_TOOL_CONFIRMATION):
+        return factory()
+    probe = factory()
+    function_names = list(probe.functions.keys())
+    return factory(requires_confirmation_tools=function_names)
 
 
 def build_enabled_tool_instances():
-    """Instantiate the currently-enabled tools, for wiring into an Agent."""
+    """Instantiate the currently-enabled built-in tools + plugins + MCP servers, gated appropriately."""
+    from modules.mcp_registry import build_enabled_mcp_toolkits
+    from modules.plugin_registry import build_enabled_plugin_instances
+
     enabled_ids = _load_enabled_ids()
-    return [meta["factory"]() for tool_id, meta in AVAILABLE_TOOLS.items() if tool_id in enabled_ids]
+    instances = [
+        _instantiate_gated(meta["factory"], meta["always_confirm"])
+        for tool_id, meta in AVAILABLE_TOOLS.items()
+        if tool_id in enabled_ids
+    ]
+    instances.extend(build_enabled_plugin_instances())
+    instances.extend(build_enabled_mcp_toolkits())
+    return instances

@@ -17,3 +17,7 @@ WAKE_WORD_THRESHOLD = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
 
 # Fail-closed by default: every tool call must be explicitly approved.
 REQUIRE_TOOL_CONFIRMATION = os.getenv("REQUIRE_TOOL_CONFIRMATION", "true").lower() not in ("false", "0", "no")
+
+# Whether responses are spoken automatically. When off, TTS is still available
+# on-demand per message in the desktop app.
+AUTO_SPEAK_RESPONSES = os.getenv("AUTO_SPEAK_RESPONSES", "true").lower() not in ("false", "0", "no")

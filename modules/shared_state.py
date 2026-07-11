@@ -25,17 +25,40 @@ class ConfirmationRequest:
 
 
 class EngineState:
-    """Shared, thread-safe status + pending-confirmation state for the engine, UI, and voice/terminal confirmation channels."""
+    """Shared, thread-safe status + pending-confirmation state for the engine, UI, and voice/terminal confirmation channels.
+
+    Events fan out to every subscriber (e.g. the tray icon AND the desktop
+    window both need every event) - a single shared queue would only let one
+    consumer win each item.
+    """
 
     def __init__(self):
         self.status = "idle"
-        self.status_queue = queue.Queue()
         self.pending_confirmation = None
         self._lock = threading.Lock()
+        self._subscribers = []
+
+    def subscribe(self):
+        q = queue.Queue()
+        with self._lock:
+            self._subscribers.append(q)
+        return q
+
+    def _publish(self, event):
+        with self._lock:
+            subscribers = list(self._subscribers)
+        for q in subscribers:
+            q.put(event)
 
     def set_status(self, status, detail=None):
         self.status = status
-        self.status_queue.put({"status": status, "detail": detail, "ts": time.time()})
+        self._publish({"status": status, "detail": detail, "ts": time.time()})
+
+    def push_amplitude(self, value):
+        """Live mic volume during recording, for the voice-reactive UI animation.
+        Does not change self.status - this is telemetry, not a state transition.
+        """
+        self._publish({"status": "amplitude", "detail": {"value": value}, "ts": time.time()})
 
     def begin_confirmation(self, function_name, arguments):
         req = ConfirmationRequest(function_name, arguments)

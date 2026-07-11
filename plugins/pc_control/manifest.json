@@ -1,0 +1,6 @@
+{
+  "label": "PC Control",
+  "description": "Screenshot, mouse/keyboard automation, opening applications, shell command execution, and full filesystem read/write. Every action always requires explicit confirmation - that approval is the safety boundary.",
+  "entrypoint": "plugin.py",
+  "function": "get_toolkit"
+}

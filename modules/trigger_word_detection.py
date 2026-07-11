@@ -1,7 +1,9 @@
+import numpy as np
 import sounddevice as sd
 
 from config import WAKE_WORD_THRESHOLD
 from models.create_model_instance import create_wakeword_model
+from modules.shared_state import engine_state
 
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 1280  # 80ms at 16kHz, openWakeWord's recommended frame size
@@ -25,6 +27,7 @@ def listen_for_trigger_word(model=None, should_abort=None):
                     return False
                 chunk, _ = stream.read(CHUNK_SAMPLES)
                 audio_chunk = chunk.flatten()
+                engine_state.push_amplitude(float(np.abs(audio_chunk).mean()))
 
                 predictions = model.predict(audio_chunk)
                 if any(score >= WAKE_WORD_THRESHOLD for score in predictions.values()):

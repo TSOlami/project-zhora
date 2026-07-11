@@ -1,6 +1,8 @@
 import queue
 import threading
+import time
 
+from config import AUTO_SPEAK_RESPONSES
 from models.create_model_instance import create_wakeword_model
 from modules import storage
 from modules.command_processing import process_command
@@ -10,18 +12,24 @@ from modules.shared_state import engine_state
 from modules.text_to_speech import speak_text
 from modules.trigger_word_detection import listen_for_trigger_word
 
+STREAM_REVEAL_WORDS_PER_CHUNK = 3
+STREAM_REVEAL_DELAY_SECONDS = 0.02
+
 
 class ZhoraEngine:
     """Controllable background service wrapping the wake-word -> STT -> LLM -> TTS loop.
 
     Runs on its own thread so a desktop UI can start/stop/restart it and poll
     engine_state for status, while also accepting typed prompts directly
-    (bypassing wake-word + STT) for a chat-style interface.
+    (bypassing wake-word + STT) for a chat-style interface. Typing at any
+    point cancels an in-flight recording or TTS playback immediately, so
+    switching from voice to text never means waiting out a timeout.
     """
 
     def __init__(self):
         self.state = engine_state
         self._stop_event = threading.Event()
+        self._cancel_voice_event = threading.Event()
         self._typed_queue = queue.Queue()
         self._thread = None
         self._active_chat_id = None
@@ -50,6 +58,7 @@ class ZhoraEngine:
         self._active_chat_id = chat_id
 
     def submit_prompt(self, text, chat_id=None):
+        self._cancel_voice_event.set()  # interrupt any in-flight recording/speaking
         self._typed_queue.put({"text": text, "chat_id": chat_id or self._active_chat_id})
 
     def _ensure_active_chat(self):
@@ -94,7 +103,10 @@ class ZhoraEngine:
                 continue  # interrupted by a typed prompt, or a transient error
 
             self.state.set_status("listening_for_command")
-            command = recognize_speech_from_microphone()
+            self._cancel_voice_event.clear()
+            command = recognize_speech_from_microphone(should_abort=self._cancel_voice_event.is_set)
+            if self._cancel_voice_event.is_set():
+                continue  # user started typing mid-recording; the typed prompt is already queued
             if command:
                 self._process_turn(command, self._active_chat_id)
 
@@ -106,13 +118,39 @@ class ZhoraEngine:
         self.state.set_status("thinking")
         try:
             processed = process_command(text)
-            response = get_response_from_model(processed, chat_id=chat_id)
+            response, tool_calls = get_response_from_model(processed, chat_id=chat_id)
         except Exception as e:
             self.state.set_status("error", str(e))
             return
-        self.state.set_status("speaking")
-        speak_text(response)
+
+        if tool_calls:
+            self.state.set_status("tool_calls", {"chat_id": chat_id, "tool_calls": tool_calls})
+
+        self.state.set_status("responding", {"chat_id": chat_id})
+        for chunk in _reveal_chunks(response):
+            self.state.set_status("streaming_chunk", {"chat_id": chat_id, "delta": chunk})
+            time.sleep(STREAM_REVEAL_DELAY_SECONDS)
+
+        if AUTO_SPEAK_RESPONSES:
+            self.state.set_status("speaking")
+            self._cancel_voice_event.clear()
+            speak_text(response, should_abort=self._cancel_voice_event.is_set)
+
         self.state.set_status("idle", {"chat_id": chat_id, "response": response})
+
+
+def _reveal_chunks(text, words_per_chunk=STREAM_REVEAL_WORDS_PER_CHUNK):
+    """Split a completed response into word-groups for a simulated streaming
+    reveal in the UI. Not real token-by-token LLM streaming (see README) -
+    the model call itself is not streamed, only its already-complete result
+    is drip-fed to the chat UI for the same growing-text visual effect.
+    """
+    words = text.split(" ")
+    for i in range(0, len(words), words_per_chunk):
+        piece = " ".join(words[i : i + words_per_chunk])
+        if i + words_per_chunk < len(words):
+            piece += " "
+        yield piece
 
 
 engine = ZhoraEngine()

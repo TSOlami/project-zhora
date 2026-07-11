@@ -121,31 +121,40 @@ silently doesn't trigger, check that your pulled model's Modelfile supports Olla
 tools API (most mainstream instruct models like Llama 3.1+, Qwen2.5, and Mistral do;
 some community uncensored fine-tunes may not).
 
-## Adding More Tools
+## Tools, Plugins, and PC Control
 
-`modules/tool_registry.py` holds the known, vetted set of toolkits Zhora can use
-(`DuckDuckGoTools`, `CalculatorTools` today) and which ones are currently enabled -
-toggle them from the desktop app's Tools panel, or add a new entry to
-`AVAILABLE_TOOLS` for any of Agno's many other prebuilt toolkits (files, shell,
-email, Wikipedia, YFinance, and more). This is a fixed registry you pick from, not
-an install-anything marketplace - see the safety note below on why that matters.
+Zhora can act, not just chat, through three layers:
 
-**Safety gate:** every tool call is intercepted by `modules/tool_confirmation.py`
-(wired in via Agno's `tool_hooks`) and blocks until approved. Approval can come from
-any of three channels - whichever answers first wins:
+- **Built-in tools** (`modules/tool_registry.py`): a fixed, vetted set (`DuckDuckGoTools`,
+  `CalculatorTools` today) - toggle them from the desktop app's Tools panel, or add
+  more of Agno's prebuilt toolkits to `AVAILABLE_TOOLS`.
+- **Local plugins** (`plugins/<id>/manifest.json` + `plugin.py`, loaded by
+  `modules/plugin_registry.py`): drop-in Python toolkits for anything not in the
+  built-in set. This is a local, manifest-driven system, not a hosted marketplace -
+  plugins are full-trust local code, same as installing any other software. You put
+  the file there; nothing is fetched or installed automatically.
+- **PC Control** (`plugins/pc_control/`): ships as the reference plugin. Screenshot,
+  mouse/keyboard automation, opening applications, shell command execution
+  (`run_command`), and full filesystem read/write. It is deliberately capable, not
+  artificially limited - taking real action on your machine is the point.
+
+**Safety gate:** every tool call goes through Agno's native human-in-the-loop
+mechanism - a run pauses instead of executing a gated function, and
+`modules/tool_confirmation.py` blocks until approved via any of three channels
+(whichever answers first wins):
 - Saying "yes" or "no" out loud
 - Clicking Approve/Deny in the desktop app (when it's open)
 - Typing `y`/`N` in the terminal
 
 This fails closed: no answer within 20 seconds, or anything other than an explicit
-approval, blocks the call. This matters here specifically because the project
-intentionally runs an uncensored, unrestricted model - the confirmation step is the
-only safety net between a voice command and a tool actually executing.
+approval, blocks the call - the tool genuinely does not run until approved. Every
+plugin and every PC Control action is **always** gated this way regardless of the
+`REQUIRE_TOOL_CONFIRMATION` setting; that setting only affects the built-in tools.
+This is the actual safety boundary: capability is not restricted, but nothing runs
+without you seeing exactly what's about to happen and saying yes.
 
 Set `REQUIRE_TOOL_CONFIRMATION=false` in `.env` (or the desktop app's Settings panel)
-to disable the prompt, but only once you fully trust the toolset you've wired in -
-this is not recommended while experimenting with new toolkits, especially ones that
-write files, run shell commands, or send messages/money.
+to skip confirmation for the *built-in* tools only, once you trust them.
 
 ## Desktop Client
 

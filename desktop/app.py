@@ -7,11 +7,14 @@ import threading
 import webview
 
 import config
+from desktop.shortcut import create_desktop_shortcut
 from modules import storage, tool_registry
 from modules.engine import engine
 from modules.env_file import set_env_value
+from modules.google_recog import recognize_speech_from_microphone
 from modules.model_interaction import get_current_model, set_current_model
 from modules.shared_state import engine_state
+from modules.text_to_speech import speak_text
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
@@ -72,6 +75,22 @@ class Api:
 
         refresh_tools()
 
+    def add_mcp_server(self, label, command):
+        import uuid
+
+        from modules.mcp_registry import add_mcp_server
+
+        server_id = uuid.uuid4().hex[:8]
+        add_mcp_server(server_id, label, command)
+
+    def remove_mcp_server(self, server_id):
+        from modules.mcp_registry import remove_mcp_server
+
+        remove_mcp_server(server_id)
+        from modules.model_interaction import refresh_tools
+
+        refresh_tools()
+
     # --- Model ---
     def get_current_model(self):
         return get_current_model()
@@ -94,6 +113,26 @@ class Api:
     def deny_call(self):
         engine_state.resolve_confirmation("deny")
 
+    # --- On-demand TTS ---
+    def speak_message(self, text):
+        threading.Thread(target=speak_text, args=(text,), daemon=True).start()
+
+    # --- Push-to-talk ---
+    def start_voice_input(self, chat_id):
+        if engine_state.status not in ("idle", "listening_for_wake_word", "voice_unavailable", "stopped"):
+            return {"ok": False, "error": "Zhora is busy right now."}
+        threading.Thread(target=self._capture_voice_input, args=(chat_id,), daemon=True).start()
+        return {"ok": True}
+
+    def _capture_voice_input(self, chat_id):
+        engine_state.set_status("listening_for_command")
+        command = recognize_speech_from_microphone()
+        if command:
+            engine.set_active_chat(chat_id)
+            engine.submit_prompt(command, chat_id=chat_id)
+        else:
+            engine_state.set_status("idle")
+
     # --- Engine control ---
     def start_engine(self):
         engine.start()
@@ -114,18 +153,33 @@ class Api:
             "wake_word_model_path": config.WAKE_WORD_MODEL_PATH or "",
             "wake_word_name": config.WAKE_WORD_NAME or "",
             "require_tool_confirmation": config.REQUIRE_TOOL_CONFIRMATION,
+            "auto_speak_responses": config.AUTO_SPEAK_RESPONSES,
         }
 
     def set_setting(self, key, value):
-        allowed_keys = {"WAKE_WORD_MODEL_PATH", "WAKE_WORD_NAME", "REQUIRE_TOOL_CONFIRMATION", "WAKE_WORD_THRESHOLD"}
+        allowed_keys = {
+            "WAKE_WORD_MODEL_PATH",
+            "WAKE_WORD_NAME",
+            "REQUIRE_TOOL_CONFIRMATION",
+            "WAKE_WORD_THRESHOLD",
+            "AUTO_SPEAK_RESPONSES",
+        }
         if key not in allowed_keys:
             raise ValueError(f"Unknown setting: {key}")
         set_env_value(key, str(value))
 
+    def create_desktop_shortcut(self):
+        try:
+            path = create_desktop_shortcut()
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
 
 def _pump_engine_events(window):
+    subscription = engine_state.subscribe()
     while True:
-        event = engine_state.status_queue.get()
+        event = subscription.get()
         try:
             window.evaluate_js(f"window.onZhoraEvent({json.dumps(event)})")
         except Exception:

@@ -3,6 +3,7 @@ import threading
 import pystray
 from PIL import Image, ImageDraw
 
+from desktop.shortcut import create_desktop_shortcut
 from modules.engine import engine
 from modules.shared_state import engine_state
 
@@ -41,6 +42,7 @@ class ZhoraTray:
                 pystray.MenuItem("Start", self._start),
                 pystray.MenuItem("Stop", self._stop),
                 pystray.MenuItem("Restart", self._restart),
+                pystray.MenuItem("Add to Desktop", self._add_to_desktop),
                 pystray.MenuItem("Quit", self._quit),
             ),
         )
@@ -57,15 +59,24 @@ class ZhoraTray:
     def _restart(self, icon=None, item=None):
         engine.restart()
 
+    def _add_to_desktop(self, icon=None, item=None):
+        try:
+            create_desktop_shortcut()
+        except Exception as e:
+            print(f"Failed to create desktop shortcut: {e}")
+
     def _quit(self, icon=None, item=None):
         engine.stop()
         self.icon.stop()
         self._on_quit()
 
     def _watch_status(self):
+        subscription = engine_state.subscribe()
         while True:
-            event = engine_state.status_queue.get()
+            event = subscription.get()
             status = event["status"]
+            if status == "amplitude":
+                continue  # high-frequency telemetry, not a real status change
             color = _STATUS_COLORS.get(status, (128, 128, 128))
             self.icon.icon = _make_icon_image(color)
             self.icon.title = f"Zhora - {status.replace('_', ' ')}"
