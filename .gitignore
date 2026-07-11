@@ -6,17 +6,14 @@ environment.*
 venv/
 .venv/
 
-# Config Files
-config.*
-
 # Node Modules
 node_modules/
 
 # Build Files
 listener.py
 
-# Models
-porcupine
+# Wake word models (trained/downloaded locally, not committed)
+models/wakeword/
 
 # Build Files
 __pycache__/
