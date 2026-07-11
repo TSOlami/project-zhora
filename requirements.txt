@@ -1,2 +1,14 @@
-pvporcupine==3.0.3
-pyttsx3==2.98
+openwakeword>=0.6.0
+onnxruntime>=1.24.1
+sounddevice>=0.5.1
+SpeechRecognition>=3.10.4
+python-dotenv>=1.0.1
+ollama>=0.3.3
+pyttsx3>=2.98
+agno>=2.7.2
+openai>=2.45.0
+ddgs>=9.14.4
+sqlalchemy>=2.0.51
+pywebview>=6.2.1
+pystray>=0.19.5
+Pillow>=12.3.0

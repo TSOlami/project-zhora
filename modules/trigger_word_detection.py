@@ -1,46 +1,35 @@
-from models.create_model_instance import create_porcupine_instance
-import pyaudio
-import struct
+import sounddevice as sd
+
+from config import WAKE_WORD_THRESHOLD
+from models.create_model_instance import create_wakeword_model
+
+SAMPLE_RATE = 16000
+CHUNK_SAMPLES = 1280  # 80ms at 16kHz, openWakeWord's recommended frame size
 
 
-def listen_for_trigger_word():
+def listen_for_trigger_word(model=None, should_abort=None):
+    """Blocks until the wake word is detected, or should_abort() returns True.
 
-    porcupine = None
-    audio = None
-    stream = None
-
+    Pass a pre-built `model` (from create_wakeword_model()) to avoid reloading
+    it on every call - the engine reuses one across its whole listen loop.
+    """
     try:
-
-        porcupine = create_porcupine_instance()
-        audio = pyaudio.PyAudio()
-        stream = audio.open(
-            rate=porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=porcupine.frame_length
-        )
-        stream.start_stream()
+        if model is None:
+            model = create_wakeword_model()
 
         print("Listening for trigger word...")
 
-        while True:
-            pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
-            pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
+            while True:
+                if should_abort is not None and should_abort():
+                    return False
+                chunk, _ = stream.read(CHUNK_SAMPLES)
+                audio_chunk = chunk.flatten()
 
-            keyword_index = porcupine.process(pcm)
-            if keyword_index >= 0:
-                return True
-    
+                predictions = model.predict(audio_chunk)
+                if any(score >= WAKE_WORD_THRESHOLD for score in predictions.values()):
+                    return True
+
     except Exception as e:
         print(f"An error occurred: {e}")
         return False
-
-    finally:
-        if porcupine is not None:
-            porcupine.delete()
-        if stream is not None:
-            stream.stop_stream()
-            stream.close()
-        if audio is not None:
-            audio.terminate()

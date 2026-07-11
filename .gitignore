@@ -15,5 +15,8 @@ listener.py
 # Wake word models (trained/downloaded locally, not committed)
 models/wakeword/
 
+# Local runtime data (chat history, tool toggles) - personal, not committed
+data/
+
 # Build Files
 __pycache__/

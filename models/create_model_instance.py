@@ -1,13 +1,17 @@
-import pvporcupine
-import pvleopard
-from config import PICOVOICE_ACCESS_KEY
+from openwakeword.model import Model
+
+from config import WAKE_WORD_MODEL_PATH, WAKE_WORD_NAME
 
 
-def create_porcupine_instance():
-    access_key = PICOVOICE_ACCESS_KEY
-    keyword_path = r"/home/teejay/www/personal/project-zhora/models/porcupine/Hey-Zora_en_linux_v3_0_0.ppn"
-    return pvporcupine.create(access_key=access_key, keyword_paths=[keyword_path])
-
-def create_leopard_instance():
-    access_key = PICOVOICE_ACCESS_KEY
-    return pvleopard.create(access_key=access_key)
+def create_wakeword_model():
+    if WAKE_WORD_MODEL_PATH:
+        wakeword_models = [WAKE_WORD_MODEL_PATH]
+    elif WAKE_WORD_NAME:
+        wakeword_models = [WAKE_WORD_NAME]
+    else:
+        raise RuntimeError(
+            "No wake word configured. Train a custom 'Hey Zhora' model and set "
+            "WAKE_WORD_MODEL_PATH in .env, or set WAKE_WORD_NAME to a pretrained "
+            "openWakeWord model as a temporary stand-in. See README for training instructions."
+        )
+    return Model(wakeword_models=wakeword_models, inference_framework="onnx")

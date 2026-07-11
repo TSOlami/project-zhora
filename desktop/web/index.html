@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Zhora</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="brand">Zhora</span>
+        <button id="new-chat-btn" title="New chat">+</button>
+      </div>
+      <div id="chat-list"></div>
+      <div class="sidebar-footer">
+        <button id="tools-btn">Tools</button>
+        <button id="settings-btn">Settings</button>
+      </div>
+    </aside>
+    <main id="main">
+      <div id="topbar">
+        <span id="status-dot" class="dot idle"></span>
+        <span id="status-text">idle</span>
+        <div id="engine-controls">
+          <button id="engine-start" title="Start">Start</button>
+          <button id="engine-stop" title="Stop">Stop</button>
+          <button id="engine-restart" title="Restart">Restart</button>
+        </div>
+      </div>
+      <div id="messages"></div>
+      <form id="input-form">
+        <input id="input-box" type="text" placeholder="Message Zhora..." autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <div id="confirmation-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Confirm tool call</h3>
+      <p id="confirm-function"></p>
+      <pre id="confirm-args"></pre>
+      <p class="hint">Say "yes" or "no", or choose below. Times out to deny.</p>
+      <div class="modal-actions">
+        <button id="confirm-deny" class="danger">Deny</button>
+        <button id="confirm-approve" class="primary">Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Settings</h3>
+      <label>Model
+        <select id="model-select"></select>
+      </label>
+      <label>Wake word model path (.onnx)
+        <input id="wake-word-path" type="text" placeholder="models/wakeword/hey_zhora.onnx" />
+      </label>
+      <label class="checkbox">
+        <input id="require-confirmation" type="checkbox" />
+        Require confirmation for tool calls
+      </label>
+      <div class="modal-actions">
+        <button id="settings-close">Close</button>
+        <button id="settings-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tools-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Tools</h3>
+      <div id="tools-list"></div>
+      <div class="modal-actions">
+        <button id="tools-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
