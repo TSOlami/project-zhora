@@ -94,6 +94,8 @@ async function switchChat(chatId) {
   const messages = await api.get_messages(chatId);
   messagesEl.innerHTML = "";
   messages.forEach((m) => addMessageRow(m.role, m.content));
+  const mode = await api.get_chat_mode(chatId);
+  document.getElementById("mode-select").value = mode;
   await loadChatList();
 }
 
@@ -114,6 +116,11 @@ inputForm.addEventListener("submit", (e) => {
 });
 
 document.getElementById("new-chat-btn").onclick = () => createChat();
+
+document.getElementById("mode-select").onchange = async (e) => {
+  if (!activeChatId) return;
+  await api.set_chat_mode(activeChatId, e.target.value);
+};
 
 micBtn.onclick = async () => {
   if (!activeChatId) await createChat();

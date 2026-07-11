@@ -28,23 +28,40 @@ def _connect():
         )
         """
     )
+    try:
+        conn.execute("ALTER TABLE zhora_chats ADD COLUMN mode TEXT DEFAULT 'chat'")
+    except sqlite3.OperationalError:
+        pass  # column already exists from a previous run
     return conn
 
 
-def create_chat(title="New chat"):
+def create_chat(title="New chat", mode="chat"):
     chat_id = str(uuid.uuid4())
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO zhora_chats (id, title, created_at) VALUES (?, ?, ?)",
-            (chat_id, title, time.time()),
+            "INSERT INTO zhora_chats (id, title, created_at, mode) VALUES (?, ?, ?, ?)",
+            (chat_id, title, time.time(), mode),
         )
     return chat_id
 
 
 def list_chats():
     with _connect() as conn:
-        rows = conn.execute("SELECT id, title, created_at FROM zhora_chats ORDER BY created_at DESC").fetchall()
-    return [{"id": row[0], "title": row[1], "created_at": row[2]} for row in rows]
+        rows = conn.execute(
+            "SELECT id, title, created_at, mode FROM zhora_chats ORDER BY created_at DESC"
+        ).fetchall()
+    return [{"id": row[0], "title": row[1], "created_at": row[2], "mode": row[3] or "chat"} for row in rows]
+
+
+def get_chat_mode(chat_id):
+    with _connect() as conn:
+        row = conn.execute("SELECT mode FROM zhora_chats WHERE id = ?", (chat_id,)).fetchone()
+    return (row[0] if row and row[0] else "chat")
+
+
+def set_chat_mode(chat_id, mode):
+    with _connect() as conn:
+        conn.execute("UPDATE zhora_chats SET mode = ? WHERE id = ?", (mode, chat_id))
 
 
 def rename_chat(chat_id, title):

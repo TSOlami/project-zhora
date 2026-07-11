@@ -192,6 +192,17 @@ html, body {
 }
 #engine-controls button:hover { background: #202124; }
 
+#mode-select {
+  margin-left: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #2a2b2e;
+  background: #202124;
+  color: #e8e8ea;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 #settings-btn { margin-left: auto; }
 
 #content-area {

@@ -13,6 +13,32 @@ _db = SqliteDb(db_file=os.path.join(DATA_DIR, "chats.db"))
 
 _state = {"model": OLLAMA_MODEL, "agent": None}
 
+BASE_INSTRUCTIONS = (
+    "You are Zhora, the user's personal assistant. Be direct and natural. Only call a tool "
+    "when the request genuinely requires real-time information, a calculation, or a "
+    "real-world action you cannot already answer correctly - never for greetings, small "
+    "talk, opinions, or things you already know."
+)
+
+MODE_INSTRUCTIONS = {
+    "chat": "Keep responses conversational and to the point.",
+    "co_work": (
+        "You're collaborating on something substantial with the user - code, a document, a "
+        "plan. Longer, structured responses are fine here. Present code or long-form content "
+        "as a single clear fenced code block."
+    ),
+    "code": (
+        "Focus on programming tasks. Prioritize correct, working code with brief "
+        "explanations. Use fenced code blocks with the right language tag."
+    ),
+}
+
+CONCISE_INSTRUCTIONS = (
+    "This reply will be read aloud by text-to-speech. Respond in 1-2 short, natural spoken "
+    "sentences - no lists, no headers, no long explanations. Talk like a person in "
+    "conversation, not a report."
+)
+
 
 def get_current_model():
     return _state["model"]
@@ -42,6 +68,13 @@ def _get_agent():
     return _state["agent"]
 
 
+def _build_instructions(mode, concise):
+    parts = [BASE_INSTRUCTIONS, MODE_INSTRUCTIONS.get(mode, MODE_INSTRUCTIONS["chat"])]
+    if concise:
+        parts.append(CONCISE_INSTRUCTIONS)
+    return "\n\n".join(parts)
+
+
 def _resolve_pending_confirmations(agent, response):
     """Agno's native human-in-the-loop flow: a run pauses instead of running a
     gated tool. Nothing here calls the tool directly - Agno only executes it
@@ -57,13 +90,17 @@ def _resolve_pending_confirmations(agent, response):
     return response
 
 
-def get_response_from_model(command_text, chat_id=None):
+def get_response_from_model(command_text, chat_id=None, concise=False, mode="chat"):
     """Returns (response_text, tool_calls) where tool_calls is
-    [{"name": ..., "result": ...}, ...] for whatever tools actually ran,
-    so callers can show "used tool X" activity in a chat transcript.
+    [{"name": ..., "result": ...}, ...] for whatever tools actually ran.
+
+    concise=True is for voice-triggered turns (wake word or push-to-talk) -
+    short, spoken-style replies instead of long written answers. mode picks
+    the behavior profile ("chat" / "co_work" / "code"), independent of concise.
     """
     try:
         agent = _get_agent()
+        agent.instructions = _build_instructions(mode, concise)
         response = agent.run(command_text, session_id=chat_id)
         response = _resolve_pending_confirmations(agent, response)
         tool_calls = [

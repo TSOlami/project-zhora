@@ -57,9 +57,9 @@ class ZhoraEngine:
     def set_active_chat(self, chat_id):
         self._active_chat_id = chat_id
 
-    def submit_prompt(self, text, chat_id=None):
+    def submit_prompt(self, text, chat_id=None, source="typed"):
         self._cancel_voice_event.set()  # interrupt any in-flight recording/speaking
-        self._typed_queue.put({"text": text, "chat_id": chat_id or self._active_chat_id})
+        self._typed_queue.put({"text": text, "chat_id": chat_id or self._active_chat_id, "source": source})
 
     def _ensure_active_chat(self):
         if self._active_chat_id is None:
@@ -80,7 +80,7 @@ class ZhoraEngine:
         while not self._stop_event.is_set():
             try:
                 turn = self._typed_queue.get(timeout=0.2)
-                self._process_turn(turn["text"], turn["chat_id"])
+                self._process_turn(turn["text"], turn["chat_id"], concise=(turn.get("source") == "voice"))
                 continue
             except queue.Empty:
                 pass
@@ -108,17 +108,18 @@ class ZhoraEngine:
             if self._cancel_voice_event.is_set():
                 continue  # user started typing mid-recording; the typed prompt is already queued
             if command:
-                self._process_turn(command, self._active_chat_id)
+                self._process_turn(command, self._active_chat_id, concise=True)
 
         self.state.set_status("idle")
 
-    def _process_turn(self, text, chat_id):
+    def _process_turn(self, text, chat_id, concise=False):
         self._ensure_active_chat()
         chat_id = chat_id or self._active_chat_id
+        mode = storage.get_chat_mode(chat_id)
         self.state.set_status("thinking")
         try:
             processed = process_command(text)
-            response, tool_calls = get_response_from_model(processed, chat_id=chat_id)
+            response, tool_calls = get_response_from_model(processed, chat_id=chat_id, concise=concise, mode=mode)
         except Exception as e:
             self.state.set_status("error", str(e))
             return

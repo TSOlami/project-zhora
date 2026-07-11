@@ -44,14 +44,20 @@ class Api:
     def list_chats(self):
         return storage.list_chats()
 
-    def create_chat(self, title="New chat"):
-        return storage.create_chat(title)
+    def create_chat(self, title="New chat", mode="chat"):
+        return storage.create_chat(title, mode)
 
     def rename_chat(self, chat_id, title):
         storage.rename_chat(chat_id, title)
 
     def delete_chat(self, chat_id):
         storage.delete_chat(chat_id)
+
+    def get_chat_mode(self, chat_id):
+        return storage.get_chat_mode(chat_id)
+
+    def set_chat_mode(self, chat_id, mode):
+        storage.set_chat_mode(chat_id, mode)
 
     def get_messages(self, chat_id):
         return storage.get_messages(chat_id)
@@ -129,7 +135,7 @@ class Api:
         command = recognize_speech_from_microphone()
         if command:
             engine.set_active_chat(chat_id)
-            engine.submit_prompt(command, chat_id=chat_id)
+            engine.submit_prompt(command, chat_id=chat_id, source="voice")
         else:
             engine_state.set_status("idle")
 
