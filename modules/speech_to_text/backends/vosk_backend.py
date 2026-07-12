@@ -34,10 +34,6 @@ def recognize(audio_bytes, sample_rate):
     return result.get("text") or None
 
 
-# Vosk is built for incremental use - unlike a batch cloud API, it can return
-# its best-guess-so-far after every chunk, which is what powers the "text
-# appears as you speak" live caption in the desktop UI. See
-# speech_to_text/recognizer.py for how SUPPORTS_STREAMING is used.
 SUPPORTS_STREAMING = True
 
 
@@ -46,19 +42,16 @@ class _Stream:
         self._recognizer = recognizer
 
     def feed(self, chunk_bytes):
-        """Interim best-guess text so far, or None. Called once per audio chunk."""
         if self._recognizer.AcceptWaveform(chunk_bytes):
-            # Vosk's own internal endpointer detected a completed segment
-            # (e.g. a longer pause mid-command) - PartialResult() would be
-            # empty right after this, so surface the segment that just
-            # finished instead of letting the caption flicker back to blank.
+            # Vosk's endpointer finalized a segment mid-stream (e.g. a longer
+            # pause) - PartialResult() would be empty right after, so surface
+            # the segment that just finished instead of a blank flicker.
             result = json.loads(self._recognizer.Result())
             return result.get("text") or None
         partial = json.loads(self._recognizer.PartialResult())
         return partial.get("partial") or None
 
     def finish(self):
-        """The final transcript once recording has stopped."""
         result = json.loads(self._recognizer.FinalResult())
         return result.get("text") or None
 

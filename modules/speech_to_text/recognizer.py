@@ -5,9 +5,7 @@ from modules.speech_to_text.recording import SAMPLE_RATE, record_until_silence
 
 logger = logging.getLogger(__name__)
 
-# Maps config.STT_ENGINE values to their backend module's import path. Add a
-# new backend by writing speech_to_text/backends/<name>_backend.py (see
-# base.py for the required shape) and adding one entry here.
+# config.STT_ENGINE -> backend module import path. See base.py.
 _BACKEND_MODULES = {
     "vosk": "modules.speech_to_text.backends.vosk_backend",
     "google": "modules.speech_to_text.backends.google_backend",
@@ -28,10 +26,8 @@ def _get_backend(name):
 
 
 def recognize_speech_from_microphone(should_abort=None, on_partial=None):
-    """on_partial(text), if given, is called with the backend's interim
-    best-guess transcript as the user is still talking - only backends with
-    SUPPORTS_STREAMING actually call it; others just produce the final text
-    once recording stops, same as before.
+    """on_partial(text), if given, gets the backend's interim guess while the
+    user is still talking - only called by SUPPORTS_STREAMING backends.
     """
     logger.info("Listening...")
     backend = _get_backend(config.STT_ENGINE)

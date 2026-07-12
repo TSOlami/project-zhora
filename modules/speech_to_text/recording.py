@@ -11,12 +11,10 @@ MAX_DURATION = 15  # hard cap on recording length, seconds
 
 def record_until_silence(should_abort=None, on_chunk=None):
     """Raw 16-bit PCM mono bytes from the mic, from first sound until a
-    trailing silence gap (or MAX_DURATION) - engine-agnostic, shared by
-    every speech_to_text backend.
+    trailing silence gap (or MAX_DURATION).
 
-    on_chunk(chunk_bytes), if given, is called with each chunk's raw 16-bit
-    PCM bytes as it's captured - lets a streaming-capable backend feed audio
-    to its recognizer live instead of waiting for the full recording, without
+    on_chunk(chunk_bytes), if given, is called with each chunk as it's
+    captured - lets a streaming backend feed its recognizer live without
     duplicating this silence-detection loop.
     """
     silence_threshold = config.STT_SILENCE_THRESHOLD

@@ -11,24 +11,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "taozhiyuai/llama-3-8b-lexi-uncensored:f16")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-# Speech-to-text backend: "vosk" (default - fully offline, no network calls)
-# or "google" (Google's free Web Speech API - needs internet, no model
-# download). See modules/speech_to_text/base.py for how to add another one.
-# Frozen at import time like OLLAMA_MODEL above since backends lazily load/
-# cache their model on first use - switching engines needs an app restart.
+# "vosk" (default, offline) or "google" (cloud). See speech_to_text/base.py.
 STT_ENGINE = os.getenv("STT_ENGINE", "vosk").lower()
 
-# Only read by the vosk backend. Defaults to the small English model's
-# expected location under data/models/ (see the setup guide for the
-# download link) - override if you put it, or a different Vosk model,
-# somewhere else.
 VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH") or os.path.join(DATA_DIR, "models", "vosk-model-small-en-us-0.15")
 
-# How much trailing silence (seconds) ends a voice recording, and how loud
-# (int16 amplitude) counts as "not silence". Lower duration = feels snappier
-# but risks cutting off speech during a mid-sentence pause; too low a
-# threshold picks up room noise/breath as speech and never detects silence at
-# all (recording then runs until MAX_DURATION in recording.py instead).
+# Trailing silence (seconds) that ends a recording, and the int16 amplitude
+# threshold for "not silence" - too low a threshold never detects silence at
+# all (room noise keeps it "started"; recording then runs until MAX_DURATION).
 STT_SILENCE_DURATION = float(os.getenv("STT_SILENCE_DURATION", "0.8"))
 STT_SILENCE_THRESHOLD = int(os.getenv("STT_SILENCE_THRESHOLD", "500"))
 

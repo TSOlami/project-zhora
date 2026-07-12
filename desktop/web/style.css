@@ -2,11 +2,7 @@
   box-sizing: border-box;
 }
 
-/* One scrollbar look everywhere (chat list, messages, modals, canvas,
-   custom-select popups, memory list) - WebView2 is Chromium under the hood,
-   so ::-webkit-scrollbar reaches every scrollable element from one place
-   instead of the OS's default light scrollbar clashing with this dark theme
-   on some panels but not others. */
+/* WebView2 is Chromium-based, so this reaches every scrollable element app-wide. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -523,10 +519,7 @@ html, body {
 }
 #input-box:focus { outline: 1px solid #9a9a9e; }
 
-/* Live "as you speak" caption state - the input box is briefly showing the
-   STT backend's interim guess, not something the user typed, so it reads as
-   distinct (italic, dimmed) rather than looking like normal composed text
-   that's about to be sent verbatim. */
+/* Live "as you speak" caption - reads as distinct from actual typed text. */
 #input-box.listening-preview {
   font-style: italic;
   color: #9a9a9e;
@@ -762,12 +755,7 @@ input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allo
   font-size: 12px;
 }
 
-/* Sticky footer: on a modal tall enough to scroll (.modal-content itself is
-   the scroll container - see above), the action buttons stay reachable at
-   the bottom of the viewport instead of scrolling out of reach along with
-   the rest of the content. The negative side margins + matching padding
-   let it span edge-to-edge and sit flush against the modal's own bottom
-   padding/rounded corners rather than floating with a gap under it. */
+/* Sticky footer so action buttons stay reachable when .modal-content scrolls. */
 .modal-actions {
   display: flex;
   justify-content: flex-end;

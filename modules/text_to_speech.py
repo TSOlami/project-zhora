@@ -8,44 +8,20 @@ from config import get_voice_id, get_voice_rate, get_voice_volume
 
 logger = logging.getLogger(__name__)
 
-# Generous upper bound on a single job (mainly speak_text()'s _speak()) - a
-# well-behaved call finishes quickly after being superseded/interrupted, or
-# naturally once the utterance ends. This exists purely as a safety net for
-# the rare case where SAPI's engine.stop() races with the utterance's own
-# natural completion and runAndWait() never returns (observed in practice:
-# clicking a second message's speak button while an earlier one is still
-# playing can occasionally wedge it) - set well above the longest plausible
-# uninterrupted response read aloud, so real speech is never cut short.
+# Safety net for a wedged job (SAPI runAndWait() that never returns) rather
+# than the expected case - set well above the longest plausible response.
 _JOB_TIMEOUT_SECONDS = 90
 
-# pyttsx3's SAPI5 engine is a COM object whose events (including the
-# "finished speaking" one that runAndWait() blocks on) are only ever
-# delivered back to the specific OS thread that created the engine (COM
-# apartment affinity) - creating it on one thread and then driving it
-# (say()/runAndWait()) from another, even a second later, silently breaks
-# event delivery: runAndWait() never returns, because the completion event
-# has nowhere to land. (Confirmed directly: driving a cross-thread-created
-# engine gets the *first* event and then nothing - not even a delayed one.)
-# The previous design created the engine lazily on whichever ad-hoc per-call
-# thread got there first, then reused it from later ad-hoc threads, hitting
-# exactly this. A later design fixed the "which thread creates it" half by
-# using one permanent thread for that - but then still ran each job on a
-# *fresh, throwaway* inner thread, which broke the exact same affinity one
-# level down: clicking a second "speak" button while an earlier one was
-# still playing would supersede and stop the first (audibly), but the
-# second would then never actually play, because the first job's
-# runAndWait() - now driven from a throwaway thread instead of the engine's
-# creating thread - never returned to free up the worker for the next job.
-#
-# The fix: the engine must be created *and* driven for its entire life by
-# the same single, permanent thread. That thread (_driver) does nothing but
-# create the engine once and then run jobs handed to it one at a time,
-# forever. A second, outer thread (_worker) exists purely to enforce the
-# wedge timeout below without itself ever touching the engine: if a job
-# doesn't finish in time, _worker gives up waiting and abandons both the
-# driver thread and the engine (rather than trying to interrupt a COM call
-# stuck on another thread), and the next speak_text() call spins up a fresh
-# pair from scratch.
+# SAPI's COM events (including "finished speaking", which runAndWait() blocks
+# on) are only ever delivered to the OS thread that created the engine -
+# creating it on one thread and driving say()/runAndWait() from another
+# silently breaks event delivery, so runAndWait() never returns. _driver is
+# therefore the one permanent thread that both creates the engine and runs
+# every job on it, for the engine's whole life. _worker is a second, outer
+# thread that only enforces the wedge timeout below without itself touching
+# the engine - if a job doesn't finish in time, it abandons the driver
+# thread and engine wholesale rather than trying to interrupt a stuck COM
+# call, and the next speak_text() call spins up a fresh pair.
 _jobs = queue.Queue()
 _worker_started = threading.Event()
 _worker_start_lock = threading.Lock()  # guards the check-then-spawn below
@@ -68,8 +44,6 @@ def _worker():
             finally:
                 finished.set()
 
-    # Daemon, permanent for this engine generation: created once here and
-    # never replaced except by abandoning it wholesale below.
     threading.Thread(target=_driver, daemon=True).start()
     engine_ready.wait()
     _worker_started.set()
@@ -84,19 +58,16 @@ def _worker():
                 _JOB_TIMEOUT_SECONDS,
             )
             _worker_started.clear()
-            return  # abandons the stuck driver thread/engine; _ensure_worker() spins up a fresh pair next call
+            return
 
 
 def _ensure_worker():
     if _worker_started.is_set():
         return
     with _worker_start_lock:
-        # Re-check inside the lock, and wait for the worker to actually
-        # finish starting *before* releasing it - otherwise a second thread
-        # blocked on this lock would still see _worker_started as False the
-        # moment it gets in, since setting that flag happens asynchronously
-        # inside the spawned thread, and would spawn a redundant second
-        # worker (which loses the CoInitialize race and crashes).
+        # Re-check inside the lock and wait for startup to finish before
+        # releasing it - otherwise a second blocked caller could still see
+        # _worker_started as False and spawn a redundant second worker.
         if not _worker_started.is_set():
             threading.Thread(target=_worker, daemon=True).start()
             _worker_started.wait()
@@ -131,10 +102,8 @@ def list_voices():
 
 
 def get_engine_defaults():
-    """The engine's own current voice/rate/volume - read fresh rather than
-    guessed, since the actual default depends on what's installed on this
-    Windows install. Used to seed the Settings UI's sliders before any
-    override has been chosen.
+    """The engine's own current voice/rate/volume, read fresh since the
+    actual default depends on what's installed on this Windows install.
     """
 
     def _read():

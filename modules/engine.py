@@ -126,7 +126,7 @@ class ZhoraEngine:
         if new_title is not None:
             self.state.set_status("chat_renamed", {"chat_id": chat_id, "title": new_title})
         force_remember_if_triggered(text)
-        self.state.set_status("thinking")
+        self.state.set_status("thinking", {"chat_id": chat_id, "user_text": text})
         processed = process_command(text)
 
         run_id = None

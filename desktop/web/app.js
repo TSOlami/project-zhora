@@ -267,10 +267,8 @@ function applyModeUI(mode) {
 // letting a second click race the first (see MIC_READY_STATUSES usage below).
 const MIC_READY_STATUSES = new Set(["idle", "listening_for_wake_word", "voice_unavailable", "stopped"]);
 
-// Whether the input box is currently showing a live "as you speak" caption
-// rather than actually-typed text - lets partial_transcript events know
-// whether it's still safe to overwrite inputBox.value, and lets setStatus
-// know whether to clean the caption up when listening ends.
+// Whether the input box is currently a live "as you speak" caption rather
+// than typed text - guards partial_transcript from overwriting real input.
 let listeningPreviewActive = false;
 
 function setStatus(status) {
@@ -293,9 +291,6 @@ function setStatus(status) {
 }
 
 function setPartialTranscript(text) {
-  // Only backends with SUPPORTS_STREAMING (see speech_to_text/base.py) ever
-  // send these - others just produce the final text once listening stops, so
-  // this simply never fires for them and the input box stays empty until then.
   if (!listeningPreviewActive) return;
   inputBox.value = text;
 }
@@ -993,6 +988,12 @@ window.onZhoraEvent = (event) => {
   setStatus(event.status);
 
   if (event.status === "thinking") {
+    // Voice turns have no optimistic user bubble (unlike sendMessage's typed
+    // path) - render it now, not on "responding", or it stays invisible for
+    // the whole generation stretch.
+    if (!pendingUserRow && event.detail && event.detail.user_text && event.detail.chat_id === activeChatId) {
+      pendingUserRow = addMessageRow("user", event.detail.user_text);
+    }
     setGenerating(true);
   }
 

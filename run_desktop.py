@@ -112,11 +112,8 @@ def main():
     # debug=True enables the WebView2 devtools (right-click -> Inspect, or F12),
     # including its own page reload - lets frontend (HTML/CSS/JS) edits show up
     # without restarting this whole process. Python-side changes still need a
-    # full restart regardless, since modules are only loaded once. pywebview
-    # defaults to popping the devtools window open automatically whenever
-    # debug=True - turn that off so debug=True only makes devtools reachable
-    # (F12 / right-click Inspect), not visible on every launch.
-    webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
+    # full restart regardless, since modules are only loaded once.
+    webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False  # don't auto-open it on launch
     webview.start(debug=True)
 
 

@@ -70,10 +70,8 @@ class EngineState:
         self._publish({"status": "amplitude", "detail": {"value": value}, "ts": time.time()})
 
     def push_partial_transcript(self, text):
-        """Live interim speech-to-text guess while the user is still talking,
-        for the "text appears as you speak" caption in the desktop UI. Only
-        fires with streaming-capable STT backends (see speech_to_text/base.py)
-        - does not change self.status, this is telemetry, not a state transition.
+        """Live interim STT guess for the "as you speak" caption. Telemetry,
+        not a state transition - only fires for streaming-capable backends.
         """
         self._publish({"status": "partial_transcript", "detail": {"text": text}, "ts": time.time()})
 
