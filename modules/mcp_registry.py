@@ -89,11 +89,30 @@ def build_enabled_mcp_toolkits():
         server_id = server["id"]
         toolkit = _connected_toolkits.get(server_id)
         if toolkit is None:
-            toolkit = MCPTools(command=server["command"], env=server.get("env") or None)
+            # timeout_seconds=10 (agno's default) is too tight for `npx`-spawned
+            # servers: npx does a registry/version check over the network before
+            # the server process even starts, and MCPTools' own initialize()
+            # swallows a timeout there internally (logs, doesn't raise), leaving
+            # a "connected" toolkit with zero discovered tools and no visible
+            # error. Give it real headroom, and verify below regardless.
+            toolkit = MCPTools(command=server["command"], env=server.get("env") or None, timeout_seconds=60)
             try:
-                _run_coro(toolkit.connect())
+                # match _run_coro's own wait-timeout to the toolkit's internal
+                # timeout_seconds above - otherwise this outer wait cuts the
+                # connection off before the more generous internal one applies.
+                _run_coro(toolkit.connect(), timeout=60)
             except Exception as e:
                 print(f"Failed to connect MCP server '{server_id}': {e}")
+                continue
+            if not toolkit.initialized or not toolkit.functions:
+                print(
+                    f"MCP server '{server_id}' did not initialize correctly "
+                    "(no error raised, but no tools were discovered) - skipping."
+                )
+                try:
+                    _run_coro(toolkit.close())
+                except Exception:
+                    pass
                 continue
             _connected_toolkits[server_id] = toolkit
 

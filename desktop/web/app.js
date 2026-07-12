@@ -279,6 +279,8 @@ function showCanvasFromResponse(text) {
   canvasRawText = last[2];
   canvasCode.innerHTML = highlight(canvasRawText);
   canvasPanel.classList.remove("hidden");
+  const canvasDot = document.getElementById("canvas-dot");
+  if (canvasDot) canvasDot.classList.remove("hidden");
 }
 
 document.getElementById("canvas-btn").onclick = () => canvasPanel.classList.toggle("hidden");

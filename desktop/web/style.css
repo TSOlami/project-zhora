@@ -97,6 +97,15 @@ html, body {
   gap: 6px;
 }
 
+.canvas-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2f6feb;
+  flex-shrink: 0;
+}
+.canvas-dot.hidden { display: none; }
+
 .icon-btn {
   display: flex;
   align-items: center;
@@ -333,6 +342,15 @@ html, body {
   padding: 14px;
   font-size: 13px;
   font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+}
+
+.canvas-empty {
+  display: block;
+  white-space: normal;
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #9a9a9e;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .tok-keyword { color: #c586c0; }

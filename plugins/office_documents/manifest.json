@@ -1,0 +1,6 @@
+{
+  "label": "Office Documents",
+  "description": "Create real Excel (.xlsx), Word (.docx), PowerPoint (.pptx), and PDF files. Always requires confirmation.",
+  "entrypoint": "plugin.py",
+  "function": "get_toolkit"
+}

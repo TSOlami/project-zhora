@@ -121,22 +121,31 @@ silently doesn't trigger, check that your pulled model's Modelfile supports Olla
 tools API (most mainstream instruct models like Llama 3.1+, Qwen2.5, and Mistral do;
 some community uncensored fine-tunes may not).
 
-## Tools, Plugins, and PC Control
+## Tools, Plugins, PC Control, and MCP
 
-Zhora can act, not just chat, through three layers:
+Zhora can act, not just chat, through four layers:
 
 - **Built-in tools** (`modules/tool_registry.py`): a fixed, vetted set (`DuckDuckGoTools`,
   `CalculatorTools` today) - toggle them from the desktop app's Tools panel, or add
   more of Agno's prebuilt toolkits to `AVAILABLE_TOOLS`.
 - **Local plugins** (`plugins/<id>/manifest.json` + `plugin.py`, loaded by
   `modules/plugin_registry.py`): drop-in Python toolkits for anything not in the
-  built-in set. This is a local, manifest-driven system, not a hosted marketplace -
-  plugins are full-trust local code, same as installing any other software. You put
-  the file there; nothing is fetched or installed automatically.
-- **PC Control** (`plugins/pc_control/`): ships as the reference plugin. Screenshot,
-  mouse/keyboard automation, opening applications, shell command execution
-  (`run_command`), and full filesystem read/write. It is deliberately capable, not
-  artificially limited - taking real action on your machine is the point.
+  built-in set - folder-based capability packs loaded on demand, similar in spirit
+  to how other AI assistant platforms let you extend what the model can do. It's a
+  local, manifest-driven system, not a hosted marketplace - plugins are full-trust
+  local code, same as installing any other software. You put the file there;
+  nothing is fetched or installed automatically. Ships two reference plugins:
+  - **PC Control** (`plugins/pc_control/`): screenshot, mouse/keyboard automation,
+    opening applications, shell command execution (`run_command`), and full
+    filesystem read/write. Deliberately capable, not artificially limited - taking
+    real action on your machine is the point.
+  - **Office Documents** (`plugins/office_documents/`): creates real Excel
+    (`.xlsx`), Word (`.docx`), PowerPoint (`.pptx`), and PDF files.
+- **MCP servers** (`modules/mcp_registry.py`): connect any Model Context Protocol
+  server (stdio or HTTP) as another tool source - the same open standard several
+  AI desktop apps use for extensibility. Add one from the desktop app's Tools panel
+  with a label and a command string (e.g.
+  `npx -y @modelcontextprotocol/server-filesystem C:/some/dir`).
 
 **Safety gate:** every tool call goes through Agno's native human-in-the-loop
 mechanism - a run pauses instead of executing a gated function, and
@@ -148,13 +157,38 @@ mechanism - a run pauses instead of executing a gated function, and
 
 This fails closed: no answer within 20 seconds, or anything other than an explicit
 approval, blocks the call - the tool genuinely does not run until approved. Every
-plugin and every PC Control action is **always** gated this way regardless of the
-`REQUIRE_TOOL_CONFIRMATION` setting; that setting only affects the built-in tools.
-This is the actual safety boundary: capability is not restricted, but nothing runs
-without you seeing exactly what's about to happen and saying yes.
+plugin, PC Control action, and MCP-sourced tool is **always** gated this way
+regardless of the `REQUIRE_TOOL_CONFIRMATION` setting; that setting only affects the
+built-in tools. This is the actual safety boundary: capability is not restricted,
+but nothing runs without you seeing exactly what's about to happen and saying yes.
 
 Set `REQUIRE_TOOL_CONFIRMATION=false` in `.env` (or the desktop app's Settings panel)
 to skip confirmation for the *built-in* tools only, once you trust them.
+
+## Modes
+
+Each chat has a mode (switch it in the topbar), which changes how Zhora responds -
+distinct response-style profiles given to the same model, rather than separate
+applications:
+
+- **Chat** - conversational, to the point. Default.
+- **Co-Work** - longer, structured responses for building something substantial
+  (code, a document, a plan) collaboratively.
+- **Code** - focused on programming: correct, working code with brief explanations.
+
+Independent of mode: any turn that came from voice (wake word or the push-to-talk
+mic button) automatically gets a instruction to keep the reply to 1-2 short spoken
+sentences, since it's read aloud via TTS - nobody wants an assistant that yaps at
+them. Typed messages don't get this constraint.
+
+Note: unlike a dedicated terminal-based coding agent (repo-aware multi-file editing,
+test running, git operations), Zhora's "Code" mode is a lighter-weight
+response-style toggle within the same chat, not a full agentic coding loop - it
+doesn't read your repo autonomously.
+
+The Canvas panel (sidebar) is unrelated to mode - it opens automatically whenever a
+response includes a code block, in any mode (automatic based on content, not a
+manual toggle).
 
 ## Desktop Client
 
