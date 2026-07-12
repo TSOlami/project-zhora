@@ -157,13 +157,17 @@ mechanism - a run pauses instead of executing a gated function, and
 
 This fails closed: no answer within 20 seconds, or anything other than an explicit
 approval, blocks the call - the tool genuinely does not run until approved. Every
-plugin, PC Control action, and MCP-sourced tool is **always** gated this way
-regardless of the `REQUIRE_TOOL_CONFIRMATION` setting; that setting only affects the
-built-in tools. This is the actual safety boundary: capability is not restricted,
-but nothing runs without you seeing exactly what's about to happen and saying yes.
+plugin, PC Control action, and MCP-sourced tool is **always** gated this way, no
+exceptions - they're arbitrary local/external code, the same trust model as
+installing any other software. This is the actual safety boundary: capability is
+not restricted, but nothing that touches the filesystem, other processes, or the
+machine itself runs without you seeing exactly what's about to happen and saying yes.
 
-Set `REQUIRE_TOOL_CONFIRMATION=false` in `.env` (or the desktop app's Settings panel)
-to skip confirmation for the *built-in* tools only, once you trust them.
+The built-in `web_search` and `calculator` toolkits are read-only/harmless by
+design and run without confirmation (see `always_confirm` in
+`modules/tool_registry.py`) - gating them added a 20+ second stall for trivial
+questions with no real safety benefit. Any future built-in toolkit that isn't
+obviously harmless should be added with `always_confirm=True`.
 
 ## Modes
 
@@ -201,7 +205,7 @@ manual toggle).
   persistent memory (backed by Agno's session database, so context survives
   restarts). Typed messages and voice commands both land in the same chat history.
 - **Settings panel** - switch models (reads what's installed via `ollama list`),
-  set the wake word model path, toggle tool confirmation.
+  set the wake word model path, toggle auto-speak.
 - **Tools panel** - enable/disable individual toolkits.
 
 The engine itself (`modules/engine.py`) runs on a background thread regardless of

@@ -1,19 +1,15 @@
 import queue
 import threading
-import time
 
 from config import AUTO_SPEAK_RESPONSES
 from models.create_model_instance import create_wakeword_model
 from modules import storage
 from modules.command_processing import process_command
 from modules.google_recog import recognize_speech_from_microphone
-from modules.model_interaction import get_response_from_model
+from modules.model_interaction import stream_response_from_model
 from modules.shared_state import engine_state
 from modules.text_to_speech import speak_text
 from modules.trigger_word_detection import listen_for_trigger_word
-
-STREAM_REVEAL_WORDS_PER_CHUNK = 3
-STREAM_REVEAL_DELAY_SECONDS = 0.02
 
 
 class ZhoraEngine:
@@ -117,41 +113,57 @@ class ZhoraEngine:
         chat_id = chat_id or self._active_chat_id
         mode = storage.get_chat_mode(chat_id)
         self.state.set_status("thinking")
+        processed = process_command(text)
+
+        run_id = None
+        tool_calls = []
+        response = ""
+        started_responding = False
         try:
-            processed = process_command(text)
-            response, tool_calls = get_response_from_model(processed, chat_id=chat_id, concise=concise, mode=mode)
+            for kind, *payload in stream_response_from_model(processed, chat_id=chat_id, concise=concise, mode=mode):
+                if kind == "started":
+                    run_id = payload[0]
+                elif kind == "tool_call":
+                    tool_calls.append(payload[0])
+                    self.state.set_status("tool_calls", {"chat_id": chat_id, "tool_calls": tool_calls})
+                elif kind == "chunk":
+                    if not started_responding:
+                        # user_text lets the UI render the prompt bubble for
+                        # voice-originated turns too, since those never went
+                        # through the typed send path that renders it
+                        # optimistically.
+                        self.state.set_status(
+                            "responding", {"chat_id": chat_id, "run_id": run_id, "user_text": text}
+                        )
+                        started_responding = True
+                    self.state.set_status("streaming_chunk", {"chat_id": chat_id, "delta": payload[0]})
+                elif kind == "done":
+                    response, tool_calls, run_id = payload
         except Exception as e:
             self.state.set_status("error", str(e))
             return
 
-        if tool_calls:
-            self.state.set_status("tool_calls", {"chat_id": chat_id, "tool_calls": tool_calls})
-
-        self.state.set_status("responding", {"chat_id": chat_id})
-        for chunk in _reveal_chunks(response):
-            self.state.set_status("streaming_chunk", {"chat_id": chat_id, "delta": chunk})
-            time.sleep(STREAM_REVEAL_DELAY_SECONDS)
+        if not started_responding:
+            # Nothing ever streamed (e.g. an empty/failed response) - the UI
+            # still needs a "responding" event before "idle" to clear the
+            # thinking indicator and create a row to replace.
+            self.state.set_status("responding", {"chat_id": chat_id, "run_id": run_id, "user_text": text})
 
         if AUTO_SPEAK_RESPONSES:
             self.state.set_status("speaking")
             self._cancel_voice_event.clear()
-            speak_text(response, should_abort=self._cancel_voice_event.is_set)
+            # Backgrounded so a slow CPU-bound TTS pass doesn't delay "idle" -
+            # the turn is done once the text is ready, speech just plays
+            # alongside it (same as the existing interrupt-on-type behavior,
+            # which already treats speech as freely interruptible).
+            threading.Thread(
+                target=speak_text,
+                args=(response,),
+                kwargs={"should_abort": self._cancel_voice_event.is_set},
+                daemon=True,
+            ).start()
 
-        self.state.set_status("idle", {"chat_id": chat_id, "response": response})
-
-
-def _reveal_chunks(text, words_per_chunk=STREAM_REVEAL_WORDS_PER_CHUNK):
-    """Split a completed response into word-groups for a simulated streaming
-    reveal in the UI. Not real token-by-token LLM streaming (see README) -
-    the model call itself is not streamed, only its already-complete result
-    is drip-fed to the chat UI for the same growing-text visual effect.
-    """
-    words = text.split(" ")
-    for i in range(0, len(words), words_per_chunk):
-        piece = " ".join(words[i : i + words_per_chunk])
-        if i + words_per_chunk < len(words):
-            piece += " "
-        yield piece
+        self.state.set_status("idle", {"chat_id": chat_id, "response": response, "run_id": run_id})
 
 
 engine = ZhoraEngine()

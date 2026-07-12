@@ -1,8 +1,9 @@
 import os
 
-from agno.agent import Agent
+from agno.agent import Agent, RunContentEvent, RunOutput, ToolCallCompletedEvent
 from agno.db.sqlite import SqliteDb
 from agno.models.ollama import Ollama
+from agno.run.base import RunStatus
 
 from config import DATA_DIR, OLLAMA_HOST, OLLAMA_MODEL
 from modules.env_file import set_env_value
@@ -78,38 +79,108 @@ def _build_instructions(mode, concise):
     return "\n\n".join(parts)
 
 
-def _resolve_pending_confirmations(agent, response):
-    """Agno's native human-in-the-loop flow: a run pauses instead of running a
-    gated tool. Nothing here calls the tool directly - Agno only executes it
-    once every pending ToolExecution.confirmed is True and we resume via
-    continue_run(). This is the actual security boundary; request_confirmation
-    only decides confirmed True/False.
-    """
-    while response.is_paused:
-        for tool_execution in response.tools_requiring_confirmation:
-            decision = request_confirmation(tool_execution.tool_name, tool_execution.tool_args)
-            tool_execution.confirmed = decision == "approve"
-        response = agent.continue_run(response, updated_tools=response.tools)
-    return response
-
-
-def get_response_from_model(command_text, chat_id=None, concise=False, mode="chat"):
-    """Returns (response_text, tool_calls) where tool_calls is
-    [{"name": ..., "result": ...}, ...] for whatever tools actually ran.
+def stream_response_from_model(command_text, chat_id=None, concise=False, mode="chat"):
+    """Generator over the turn as it actually happens, instead of blocking
+    until the whole reply is generated. Yields:
+      ("started", run_id)                      - as soon as Agno assigns one
+      ("tool_call", {"name": ..., "result": ...}) - as each tool call finishes
+      ("chunk", text_delta)                    - real token-level deltas from Ollama
+      ("done", response_text, tool_calls, run_id) - always the last item
 
     concise=True is for voice-triggered turns (wake word or push-to-talk) -
     short, spoken-style replies instead of long written answers. mode picks
     the behavior profile ("chat" / "co_work" / "code"), independent of concise.
+
+    Confirmation-gated tools use Agno's native human-in-the-loop flow: a run
+    pauses instead of running a gated tool, and this resumes it via
+    continue_run() once request_confirmation() decides True/False - the same
+    security boundary as before, just streamed instead of blocking.
     """
     try:
         agent = _get_agent()
         agent.instructions = _build_instructions(mode, concise)
-        response = agent.run(command_text, session_id=chat_id)
-        response = _resolve_pending_confirmations(agent, response)
+        run_id = None
+        final = None
+        events = agent.run(command_text, session_id=chat_id, stream=True, stream_events=True, yield_run_output=True)
+        while True:
+            for item in events:
+                if isinstance(item, RunOutput):
+                    final = item
+                    continue
+                if run_id is None and item.run_id:
+                    run_id = item.run_id
+                    yield "started", run_id
+                if isinstance(item, ToolCallCompletedEvent) and item.tool and item.tool.tool_name:
+                    yield "tool_call", {"name": item.tool.tool_name, "result": item.tool.result}
+                elif isinstance(item, RunContentEvent) and item.content:
+                    yield "chunk", item.content
+
+            if final is None or not final.is_paused:
+                break
+            for tool_execution in final.tools_requiring_confirmation:
+                decision = request_confirmation(tool_execution.tool_name, tool_execution.tool_args)
+                tool_execution.confirmed = decision == "approve"
+            events = agent.continue_run(
+                final, updated_tools=final.tools, stream=True, stream_events=True, yield_run_output=True
+            )
+            final = None
+
         tool_calls = [
-            {"name": t.tool_name, "result": t.result} for t in (response.tools or []) if t.tool_name
-        ]
-        return response.content, tool_calls
+            {"name": t.tool_name, "result": t.result} for t in (final.tools or []) if t.tool_name
+        ] if final else []
+        yield "done", (final.content if final else ""), tool_calls, (final.run_id if final else run_id)
     except Exception as e:
         print(f"An error occurred while getting response from the model: {e}")
-        return "", []
+        yield "done", "", [], None
+
+
+def regenerate_last_response(chat_id):
+    """Marks the most recent turn in chat_id as regenerated (Agno excludes
+    RunStatus.regenerated runs from both history display and model context,
+    the same way it already excludes paused/cancelled/error runs) and
+    returns the original user text so the caller can resend it as a fresh
+    turn. Returns None if there is nothing left to retry.
+    """
+    agent = _get_agent()
+    session = agent.get_session(session_id=chat_id)
+    if session is None or not session.runs:
+        return None
+    excluded = (RunStatus.cancelled, RunStatus.regenerated)
+    for run in reversed(session.runs):
+        if run.status in excluded:
+            continue
+        user_text = next(
+            (m.get_content() for m in (run.messages or []) if m.role == "user"), None
+        )
+        run.status = RunStatus.regenerated
+        agent.db.upsert_session(session)
+        return user_text
+    return None
+
+
+def fork_conversation(chat_id):
+    """Deep-copies the full chat into a new, independent Agno session and
+    returns its session_id. Used to snapshot the pre-edit conversation
+    before truncate_from_run() rewrites the active one.
+    """
+    agent = _get_agent()
+    return agent.fork_session(source_session_id=chat_id)
+
+
+def truncate_from_run(chat_id, run_id):
+    """Marks run_id and every run after it as cancelled, so the active
+    session continues as if the conversation had ended right before run_id.
+    The original runs stay in the database (not deleted) but are excluded
+    from history/context exactly like a regenerated run.
+    """
+    agent = _get_agent()
+    session = agent.get_session(session_id=chat_id)
+    if session is None:
+        return
+    truncating = False
+    for run in session.runs:
+        if run.run_id == run_id:
+            truncating = True
+        if truncating:
+            run.status = RunStatus.cancelled
+    agent.db.upsert_session(session)

@@ -71,6 +71,29 @@ class Api:
         engine.submit_prompt(text, chat_id=chat_id)
         return {"ok": True}
 
+    def retry_last_response(self, chat_id):
+        from modules.model_interaction import regenerate_last_response
+
+        text = regenerate_last_response(chat_id)
+        if text is None:
+            return {"ok": False, "error": "Nothing to retry"}
+        engine.set_active_chat(chat_id)
+        engine.submit_prompt(text, chat_id=chat_id)
+        return {"ok": True}
+
+    def edit_message_and_resend(self, chat_id, run_id, new_text):
+        from modules.model_interaction import fork_conversation, truncate_from_run
+
+        chat = storage.get_chat(chat_id)
+        if chat is None:
+            return {"ok": False, "error": "Chat not found"}
+        forked_id = fork_conversation(chat_id)
+        storage.register_forked_chat(forked_id, f"{chat['title']} (before edit)", chat["mode"])
+        truncate_from_run(chat_id, run_id)
+        engine.set_active_chat(chat_id)
+        engine.submit_prompt(new_text, chat_id=chat_id)
+        return {"ok": True}
+
     # --- Tools ---
     def list_tools(self):
         return tool_registry.list_tools()
@@ -158,7 +181,6 @@ class Api:
             "ollama_model": get_current_model(),
             "wake_word_model_path": config.WAKE_WORD_MODEL_PATH or "",
             "wake_word_name": config.WAKE_WORD_NAME or "",
-            "require_tool_confirmation": config.REQUIRE_TOOL_CONFIRMATION,
             "auto_speak_responses": config.AUTO_SPEAK_RESPONSES,
         }
 
@@ -166,7 +188,6 @@ class Api:
         allowed_keys = {
             "WAKE_WORD_MODEL_PATH",
             "WAKE_WORD_NAME",
-            "REQUIRE_TOOL_CONFIRMATION",
             "WAKE_WORD_THRESHOLD",
             "AUTO_SPEAK_RESPONSES",
         }

@@ -4,15 +4,18 @@ import os
 from agno.tools.calculator import CalculatorTools
 from agno.tools.duckduckgo import DuckDuckGoTools
 
-from config import DATA_DIR, REQUIRE_TOOL_CONFIRMATION
+from config import DATA_DIR
 
 TOOLS_CONFIG_PATH = os.path.join(DATA_DIR, "tools_config.json")
 
 # Known, vetted toolkits only - this is a fixed registry the user picks from,
 # not an install-anything marketplace (see plugin_registry.py / mcp_registry.py
-# for the extensible sources). `always_confirm` toolkits ignore
-# REQUIRE_TOOL_CONFIRMATION entirely - a non-negotiable safety floor for
-# anything that touches the filesystem, other processes, or the machine itself.
+# for the extensible sources). `always_confirm` is the confirmation gate itself:
+# read-only/harmless toolkits (web search, arithmetic) run without asking,
+# while anything that touches the filesystem, other processes, or the machine
+# itself is marked always_confirm=True - a non-negotiable safety floor.
+# Plugins and MCP servers (arbitrary local/external code) are always gated too,
+# regardless of what they declare - see plugin_registry.py / mcp_registry.py.
 AVAILABLE_TOOLS = {
     "web_search": {
         "label": "Web Search (DuckDuckGo)",
@@ -105,10 +108,8 @@ def set_tool_enabled(tool_id, enabled):
 
 
 def _instantiate_gated(factory, always_confirm):
-    """Instantiate a toolkit, forcing confirmation on all its functions if
-    always_confirm is set OR the global REQUIRE_TOOL_CONFIRMATION is on.
-    """
-    if not (always_confirm or REQUIRE_TOOL_CONFIRMATION):
+    """Instantiate a toolkit, forcing confirmation on all its functions only if always_confirm is set."""
+    if not always_confirm:
         return factory()
     probe = factory()
     function_names = list(probe.functions.keys())
