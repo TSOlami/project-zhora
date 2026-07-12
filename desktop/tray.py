@@ -7,16 +7,26 @@ from desktop.shortcut import create_desktop_shortcut
 from modules.engine import engine
 from modules.shared_state import engine_state
 
+# Mirrors the voice orb in the chat window (see #voice-orb rules in
+# style.css) - neutral gray for passive/at-rest states, the one accent blue
+# for "actively working on something," the one danger red for error/needs-
+# your-attention. Not one color per state; color only answers "should I
+# look at this," same reasoning as the in-app orb.
+_NEUTRAL = (107, 109, 116)
+_ACCENT = (47, 111, 235)
+_DANGER = (208, 65, 63)
 _STATUS_COLORS = {
-    "idle": (90, 200, 130),
-    "listening_for_wake_word": (90, 160, 230),
-    "listening_for_command": (60, 130, 230),
-    "thinking": (230, 180, 60),
-    "speaking": (150, 100, 230),
-    "awaiting_confirmation": (230, 90, 90),
-    "voice_unavailable": (160, 160, 160),
-    "error": (220, 50, 50),
-    "stopped": (120, 120, 120),
+    "idle": _NEUTRAL,
+    "listening_for_wake_word": _NEUTRAL,
+    "voice_unavailable": _NEUTRAL,
+    "stopped": _NEUTRAL,
+    "listening_for_command": _ACCENT,
+    "thinking": _ACCENT,
+    "responding": _ACCENT,
+    "streaming_chunk": _ACCENT,
+    "speaking": _ACCENT,
+    "awaiting_confirmation": _DANGER,
+    "error": _DANGER,
 }
 
 

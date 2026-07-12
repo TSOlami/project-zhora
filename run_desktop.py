@@ -31,7 +31,21 @@ def main():
         engine_state.set_window_visible(True)
         window.show()
 
+    # window.destroy() (called below by the tray's Quit menu item and by the
+    # in-app dialog's "Quit completely" button, via tray.quit()) fires this
+    # same closing event a second time before the window actually closes -
+    # pywebview's FormClosing handler re-invokes on_closing() regardless of
+    # what triggered Close(). Without this guard, that re-entrant call would
+    # re-read CLOSE_BEHAVIOR (still "ask" if the user didn't check "remember",
+    # or "tray") and cancel the close - re-showing the dialog, or hiding a
+    # window whose engine/tray were already torn down a moment earlier,
+    # leaving an unrecoverable hidden zombie process.
+    quitting = threading.Event()
+
     def on_closing():
+        if quitting.is_set():
+            return True
+
         # What the window's X button does is itself a setting (Settings ->
         # "When closing the window"), read fresh here since it can change at
         # runtime: always minimize to tray, always quit, or ask (default).
@@ -42,6 +56,7 @@ def main():
             # closing-event handler is asking for trouble. Returning True
             # lets pywebview's native close finish the job instead; we just
             # need to stop the engine/tray icon first.
+            quitting.set()
             engine.stop()
             tray.icon.stop()
             return True
@@ -59,7 +74,11 @@ def main():
 
     window.events.closing += on_closing
 
-    tray = ZhoraTray(on_open=show_window, on_quit=lambda: window.destroy())
+    def destroy_window():
+        quitting.set()
+        window.destroy()
+
+    tray = ZhoraTray(on_open=show_window, on_quit=destroy_window)
     api.set_quit_callback(tray.quit)
     threading.Thread(target=tray.run, daemon=True).start()
     serve_focus_requests(lock_sock, on_focus_requested=show_window)

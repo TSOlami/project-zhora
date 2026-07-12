@@ -143,44 +143,53 @@ html, body {
   border-bottom: 1px solid #2a2b2e;
 }
 
+/* Status color is reserved for two kinds of "special case": actively
+   working on something (the one accent blue used everywhere else in the
+   app - not a new hue) and needs-attention/error (the one danger red).
+   Every passive/at-rest state - idle, listening for the wake word,
+   stopped, unavailable - stays neutral gray. The status TEXT next to the
+   orb already spells out which exact state it is; the orb's color only
+   needs to answer "should I look at this," not encode all nine states in
+   a different hue each. */
 #voice-orb {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #666;
+  background: #6b6d74;
   flex-shrink: 0;
   transition: transform 0.08s ease-out, box-shadow 0.15s ease-out, background 0.2s ease;
   transform: scale(1);
 }
-#voice-orb.idle { background: #5ac882; }
-#voice-orb.listening_for_wake_word { background: #5aa0e6; }
-#voice-orb.listening_for_command {
-  background: #3f8fe6;
-  box-shadow: 0 0 0 6px rgba(63, 143, 230, 0.15);
-}
-#voice-orb.thinking {
-  background: #e6b43c;
-  animation: orb-pulse 1s ease-in-out infinite;
-}
+#voice-orb.idle,
+#voice-orb.listening_for_wake_word,
+#voice-orb.voice_unavailable,
+#voice-orb.stopped { background: #6b6d74; }
+
+#voice-orb.listening_for_command,
 #voice-orb.responding,
-#voice-orb.streaming_chunk {
-  background: #e6b43c;
+#voice-orb.streaming_chunk { background: #2f6feb; }
+#voice-orb.thinking {
+  background: #2f6feb;
+  animation: accent-pulse 1s ease-in-out infinite;
 }
 #voice-orb.speaking {
-  background: #9664e6;
-  animation: orb-pulse 0.6s ease-in-out infinite;
+  background: #2f6feb;
+  animation: accent-pulse 0.6s ease-in-out infinite;
 }
-#voice-orb.awaiting_confirmation {
-  background: #e65a5a;
-  animation: orb-pulse 0.8s ease-in-out infinite;
-}
-#voice-orb.voice_unavailable { background: #a0a0a0; }
-#voice-orb.error { background: #dc3232; }
-#voice-orb.stopped { background: #787878; }
 
-@keyframes orb-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(150, 100, 230, 0.35); }
-  50% { box-shadow: 0 0 0 10px rgba(150, 100, 230, 0); }
+#voice-orb.awaiting_confirmation {
+  background: #d0413f;
+  animation: danger-pulse 0.8s ease-in-out infinite;
+}
+#voice-orb.error { background: #d0413f; }
+
+@keyframes accent-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 111, 235, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(47, 111, 235, 0); }
+}
+@keyframes danger-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(208, 65, 63, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(208, 65, 63, 0); }
 }
 
 #status-text {
@@ -391,7 +400,7 @@ html, body {
 #mic-btn.recording {
   background: #d0413f;
   border-color: #d0413f;
-  animation: orb-pulse 0.8s ease-in-out infinite;
+  animation: danger-pulse 0.8s ease-in-out infinite;
 }
 
 #canvas-panel {
