@@ -24,6 +24,210 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>',
 };
 
+// --- Custom select widget -------------------------------------------------
+// Replaces a native <select>'s appearance only. The native element stays in
+// the DOM (hidden) and remains the actual source of truth for .value and
+// 'change' events, so no other code that reads/writes a select's .value has
+// to know this exists - it just also needs to call the returned .refresh()
+// after setting .value programmatically, so the (closed) trigger's label
+// text stays in sync. Follows the ARIA "select-only combobox" pattern:
+// real DOM focus stays on the trigger button the whole time; the
+// highlighted option is tracked via aria-activedescendant instead of
+// moving focus into the listbox.
+const CHEVRON_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+const openCSelects = new Set();
+
+function enhanceSelect(nativeSelect, opts) {
+  opts = opts || {};
+  nativeSelect.style.display = "none";
+  nativeSelect.setAttribute("aria-hidden", "true");
+  nativeSelect.tabIndex = -1;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "cselect-trigger" + (opts.variant === "topbar" ? " cselect-trigger--topbar" : "");
+  trigger.setAttribute("role", "combobox");
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  if (nativeSelect.title) trigger.title = nativeSelect.title;
+
+  const valueSpan = document.createElement("span");
+  valueSpan.className = "cselect-value";
+  const chevron = document.createElement("span");
+  chevron.className = "cselect-chevron";
+  chevron.innerHTML = CHEVRON_ICON;
+  trigger.appendChild(valueSpan);
+  trigger.appendChild(chevron);
+
+  const popupId = (nativeSelect.id || "cselect") + "-listbox";
+  const popup = document.createElement("ul");
+  popup.className = "cselect-popup hidden";
+  popup.setAttribute("role", "listbox");
+  popup.id = popupId;
+  trigger.setAttribute("aria-controls", popupId);
+  document.body.appendChild(popup);
+
+  nativeSelect.insertAdjacentElement("afterend", trigger);
+
+  let activeIndex = -1;
+
+  function options() {
+    return Array.from(nativeSelect.options);
+  }
+
+  function render() {
+    const opts_ = options();
+    popup.innerHTML = "";
+    opts_.forEach((opt, i) => {
+      const li = document.createElement("li");
+      li.className = "cselect-option";
+      li.setAttribute("role", "option");
+      li.id = `${popupId}-opt-${i}`;
+      li.textContent = opt.textContent;
+      const selected = opt.value === nativeSelect.value;
+      li.setAttribute("aria-selected", selected ? "true" : "false");
+      if (selected) activeIndex = i;
+      li.onclick = () => {
+        selectIndex(i);
+        close();
+        trigger.focus();
+      };
+      popup.appendChild(li);
+    });
+    const current = opts_.find((o) => o.value === nativeSelect.value);
+    valueSpan.textContent = current ? current.textContent : "";
+  }
+
+  function selectIndex(i) {
+    const opts_ = options();
+    if (i < 0 || i >= opts_.length) return;
+    const changed = nativeSelect.value !== opts_[i].value;
+    nativeSelect.value = opts_[i].value;
+    render();
+    highlight(i);
+    if (changed) nativeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function highlight(i) {
+    activeIndex = i;
+    const items = popup.querySelectorAll(".cselect-option");
+    items.forEach((el, idx) => el.classList.toggle("active", idx === i));
+    trigger.setAttribute("aria-activedescendant", items[i] ? items[i].id : "");
+    if (items[i]) items[i].scrollIntoView({ block: "nearest" });
+  }
+
+  function position() {
+    const rect = trigger.getBoundingClientRect();
+    popup.style.left = `${Math.round(rect.left)}px`;
+    popup.style.top = `${Math.round(rect.bottom + 4)}px`;
+    popup.style.minWidth = `${Math.round(rect.width)}px`;
+  }
+
+  function isOpen() {
+    return !popup.classList.contains("hidden");
+  }
+
+  function open() {
+    if (nativeSelect.disabled) return;
+    openCSelects.forEach((close_) => close_ !== close && close_());
+    render();
+    position();
+    popup.classList.remove("hidden");
+    trigger.setAttribute("aria-expanded", "true");
+    const opts_ = options();
+    const idx = opts_.findIndex((o) => o.value === nativeSelect.value);
+    highlight(idx >= 0 ? idx : 0);
+    openCSelects.add(close);
+    document.addEventListener("mousedown", onOutsideClick, true);
+    window.addEventListener("resize", position);
+  }
+
+  function close() {
+    popup.classList.add("hidden");
+    trigger.setAttribute("aria-expanded", "false");
+    openCSelects.delete(close);
+    document.removeEventListener("mousedown", onOutsideClick, true);
+    window.removeEventListener("resize", position);
+  }
+
+  function onOutsideClick(e) {
+    if (!popup.contains(e.target) && e.target !== trigger) close();
+  }
+
+  let typeAheadBuffer = "";
+  let typeAheadTimer = null;
+
+  trigger.addEventListener("keydown", (e) => {
+    const opts_ = options();
+    if (!opts_.length) return;
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        if (!isOpen()) open();
+        else highlight(Math.min(activeIndex + 1, opts_.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (!isOpen()) open();
+        else highlight(Math.max(activeIndex - 1, 0));
+        break;
+      case "Home":
+        if (isOpen()) {
+          e.preventDefault();
+          highlight(0);
+        }
+        break;
+      case "End":
+        if (isOpen()) {
+          e.preventDefault();
+          highlight(opts_.length - 1);
+        }
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        if (isOpen()) {
+          selectIndex(activeIndex);
+          close();
+        } else {
+          open();
+        }
+        break;
+      case "Escape":
+        if (isOpen()) {
+          e.preventDefault();
+          close();
+        }
+        break;
+      case "Tab":
+        close();
+        break;
+      default:
+        if (e.key.length === 1 && /\S/.test(e.key)) {
+          typeAheadBuffer += e.key.toLowerCase();
+          clearTimeout(typeAheadTimer);
+          typeAheadTimer = setTimeout(() => (typeAheadBuffer = ""), 600);
+          const match = opts_.findIndex((o) => o.textContent.toLowerCase().startsWith(typeAheadBuffer));
+          if (match >= 0) {
+            if (isOpen()) highlight(match);
+            else selectIndex(match);
+          }
+        }
+    }
+  });
+
+  trigger.addEventListener("click", () => {
+    if (isOpen()) close();
+    else open();
+  });
+
+  render();
+
+  return { refresh: render };
+}
+
 const chatListEl = document.getElementById("chat-list");
 const messagesEl = document.getElementById("messages");
 const inputForm = document.getElementById("input-form");
@@ -33,10 +237,40 @@ const micBtn = document.getElementById("mic-btn");
 const voiceOrb = document.getElementById("voice-orb");
 const statusText = document.getElementById("status-text");
 
+const modeSelectWidget = enhanceSelect(document.getElementById("mode-select"), { variant: "topbar" });
+const closeBehaviorWidget = enhanceSelect(document.getElementById("close-behavior-select"));
+const modelSelectWidget = enhanceSelect(document.getElementById("model-select"));
+
+// Per-mode input placeholder + whether Code mode keeps Canvas open
+// proactively, instead of only opening it once a code block actually shows
+// up in a response - see MODE_UI usage in applyModeUI below.
+const MODE_UI = {
+  chat: { placeholder: "Message Zhora...", openCanvas: false },
+  co_work: { placeholder: "Describe what you're building together...", openCanvas: false },
+  code: { placeholder: "Describe the code task...", openCanvas: true },
+};
+
+function applyModeUI(mode) {
+  const ui = MODE_UI[mode] || MODE_UI.chat;
+  inputBox.placeholder = ui.placeholder;
+  if (ui.openCanvas) {
+    document.getElementById("canvas-panel").classList.remove("hidden");
+  }
+}
+
+// Mirrors the backend's own busy check in Api.start_voice_input - keeping
+// them in sync means the button's enabled state always matches whether a
+// click would actually be accepted, instead of drifting out of sync and
+// letting a second click race the first (see MIC_READY_STATUSES usage below).
+const MIC_READY_STATUSES = new Set(["idle", "listening_for_wake_word", "voice_unavailable", "stopped"]);
+
 function setStatus(status) {
   voiceOrb.className = status;
   statusText.textContent = status.replace(/_/g, " ");
   micBtn.classList.toggle("recording", status === "listening_for_command");
+  if (!generating) {
+    micBtn.disabled = !MIC_READY_STATUSES.has(status);
+  }
 }
 
 function setAmplitude(value) {
@@ -295,6 +529,8 @@ async function switchChat(chatId) {
   refreshRetryVisibility();
   const mode = await api.get_chat_mode(chatId);
   document.getElementById("mode-select").value = mode;
+  modeSelectWidget.refresh();
+  applyModeUI(mode);
   await loadChatList();
 }
 
@@ -318,15 +554,25 @@ inputForm.addEventListener("submit", (e) => {
 document.getElementById("new-chat-btn").onclick = () => createChat();
 
 document.getElementById("mode-select").onchange = async (e) => {
+  applyModeUI(e.target.value);
   if (!activeChatId) return;
   await api.set_chat_mode(activeChatId, e.target.value);
 };
 
 micBtn.onclick = async () => {
+  // Disable immediately rather than waiting for the backend's status to come
+  // back over the event pump - without this, two clicks fired close enough
+  // together both pass the backend's status check before either one's
+  // "listening_for_command" transition lands, spawning two concurrent
+  // recordings. A later real status event (via setStatus) re-syncs this if
+  // it disagrees.
+  if (micBtn.disabled) return;
+  micBtn.disabled = true;
   if (!activeChatId) await createChat();
   const result = await api.start_voice_input(activeChatId);
   if (!result.ok) {
     statusText.textContent = result.error || "Busy";
+    micBtn.disabled = false;
   }
 };
 
@@ -365,8 +611,12 @@ document.getElementById("settings-btn").onclick = async () => {
     if (m === settings.ollama_model) opt.selected = true;
     select.appendChild(opt);
   });
+  modelSelectWidget.refresh();
   document.getElementById("wake-word-path").value = settings.wake_word_model_path;
   document.getElementById("auto-speak").checked = settings.auto_speak_responses;
+  document.getElementById("close-behavior-select").value = settings.close_behavior;
+  closeBehaviorWidget.refresh();
+  document.getElementById("start-on-boot").checked = settings.start_on_boot;
   settingsModal.classList.remove("hidden");
 };
 document.getElementById("settings-close").onclick = () => settingsModal.classList.add("hidden");
@@ -374,18 +624,40 @@ document.getElementById("settings-save").onclick = async () => {
   const model = document.getElementById("model-select").value;
   const wakeWordPath = document.getElementById("wake-word-path").value;
   const autoSpeak = document.getElementById("auto-speak").checked;
+  const closeBehavior = document.getElementById("close-behavior-select").value;
+  const startOnBoot = document.getElementById("start-on-boot").checked;
   await api.set_current_model(model);
   await api.set_setting("WAKE_WORD_MODEL_PATH", wakeWordPath);
   await api.set_setting("AUTO_SPEAK_RESPONSES", autoSpeak ? "true" : "false");
+  await api.set_setting("CLOSE_BEHAVIOR", closeBehavior);
+  await api.set_start_on_boot(startOnBoot);
   settingsModal.classList.add("hidden");
 };
-document.getElementById("create-shortcut-btn").onclick = async () => {
-  const btn = document.getElementById("create-shortcut-btn");
-  const result = await api.create_desktop_shortcut();
-  btn.textContent = result.ok ? "Shortcut created!" : "Failed - see console";
-  setTimeout(() => (btn.textContent = "Create Desktop Shortcut"), 2000);
+document.getElementById("wake-word-browse").onclick = async () => {
+  const path = await api.browse_wake_word_model();
+  if (path) document.getElementById("wake-word-path").value = path;
 };
 
+// --- Close-window confirmation ---
+// Python's on_closing() calls window.showCloseConfirm() (via evaluate_js)
+// when CLOSE_BEHAVIOR is "ask" - the buttons here call back into Python to
+// actually decide, since the native close was already cancelled to make
+// room for this dialog.
+const closeConfirmModal = document.getElementById("close-confirm-modal");
+window.showCloseConfirm = () => {
+  document.getElementById("close-remember").checked = false;
+  closeConfirmModal.classList.remove("hidden");
+};
+document.getElementById("close-tray").onclick = () => {
+  const remember = document.getElementById("close-remember").checked;
+  closeConfirmModal.classList.add("hidden");
+  api.resolve_close_choice("tray", remember);
+};
+document.getElementById("close-quit").onclick = () => {
+  const remember = document.getElementById("close-remember").checked;
+  closeConfirmModal.classList.add("hidden");
+  api.resolve_close_choice("quit", remember);
+};
 // --- Tools modal ---
 const toolsModal = document.getElementById("tools-modal");
 
@@ -417,6 +689,7 @@ async function refreshToolsList() {
     controls.className = "tool-item-controls";
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
+    checkbox.className = "switch-checkbox";
     checkbox.checked = !!tool.enabled;
     checkbox.dataset.toolId = tool.id;
     checkbox.onchange = (e) => api.set_tool_enabled(tool.id, e.target.checked);

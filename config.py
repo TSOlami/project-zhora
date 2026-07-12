@@ -17,4 +17,23 @@ WAKE_WORD_THRESHOLD = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
 
 # Whether responses are spoken automatically. When off, TTS is still available
 # on-demand per message in the desktop app.
-AUTO_SPEAK_RESPONSES = os.getenv("AUTO_SPEAK_RESPONSES", "true").lower() not in ("false", "0", "no")
+#
+# This and the setting below are read fresh on every call (not frozen into a
+# module-level constant at import time, unlike OLLAMA_MODEL/WAKE_WORD_* above)
+# because both are toggled at runtime from the desktop app's Settings panel -
+# a frozen constant would silently keep the value from whenever config.py
+# first got imported, so the toggle would only take effect after a full app
+# restart. WAKE_WORD_* getting frozen is fine since changing those already
+# requires an explicit engine Restart to reload the model; a plain on/off
+# speech toggle has no such reason to need one.
+def get_auto_speak_responses():
+    return os.getenv("AUTO_SPEAK_RESPONSES", "true").lower() not in ("false", "0", "no")
+
+
+# What the desktop window's close (X) button does: "ask" shows an in-app
+# dialog (the default - matches the Slack/Discord/Spotify pattern of asking
+# once and remembering the choice), "tray" always minimizes to the tray
+# without asking, "quit" always exits the app fully.
+def get_close_behavior():
+    value = os.getenv("CLOSE_BEHAVIOR", "ask").lower()
+    return value if value in ("ask", "tray", "quit") else "ask"

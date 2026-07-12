@@ -1,7 +1,7 @@
 import queue
 import threading
 
-from config import AUTO_SPEAK_RESPONSES
+from config import get_auto_speak_responses
 from models.create_model_instance import create_wakeword_model
 from modules import storage
 from modules.command_processing import process_command
@@ -149,7 +149,7 @@ class ZhoraEngine:
             # thinking indicator and create a row to replace.
             self.state.set_status("responding", {"chat_id": chat_id, "run_id": run_id, "user_text": text})
 
-        if AUTO_SPEAK_RESPONSES:
+        if get_auto_speak_responses():
             self.state.set_status("speaking")
             self._cancel_voice_event.clear()
             # Backgrounded so a slow CPU-bound TTS pass doesn't delay "idle" -

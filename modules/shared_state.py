@@ -35,6 +35,12 @@ class EngineState:
     def __init__(self):
         self.status = "idle"
         self.pending_confirmation = None
+        # Whether the chat window is currently shown vs. minimized to tray -
+        # tracked here (rather than read off the pywebview Window object,
+        # which exposes no such getter) so the tray's background-approval
+        # notification (see tray.py) knows whether the user could actually
+        # see a confirmation modal appear, or needs a toast instead.
+        self.window_visible = True
         self._lock = threading.Lock()
         self._subscribers = []
 
@@ -53,6 +59,9 @@ class EngineState:
     def set_status(self, status, detail=None):
         self.status = status
         self._publish({"status": status, "detail": detail, "ts": time.time()})
+
+    def set_window_visible(self, visible):
+        self.window_visible = visible
 
     def push_amplitude(self, value):
         """Live mic volume during recording, for the voice-reactive UI animation.

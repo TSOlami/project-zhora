@@ -37,6 +37,19 @@ MODE_INSTRUCTIONS = {
     ),
 }
 
+# Per-mode Ollama sampling options (passed straight through to /api/chat) -
+# system-prompt wording alone is a request a small local model can ignore;
+# temperature is an actual sampling parameter, so it's a real behavior
+# difference between modes rather than a suggestion. Lower temperature for
+# Code narrows sampling toward the single most-likely (usually correct)
+# token instead of a more varied/creative one - what you want for working
+# code, not for conversation.
+MODE_OPTIONS = {
+    "chat": {"temperature": 0.7},
+    "co_work": {"temperature": 0.5},
+    "code": {"temperature": 0.2},
+}
+
 CONCISE_INSTRUCTIONS = (
     "This reply will be read aloud by text-to-speech. Respond in 1-2 short, natural spoken "
     "sentences - no lists, no headers, no long explanations. Talk like a person in "
@@ -99,6 +112,7 @@ def stream_response_from_model(command_text, chat_id=None, concise=False, mode="
     try:
         agent = _get_agent()
         agent.instructions = _build_instructions(mode, concise)
+        agent.model.options = MODE_OPTIONS.get(mode, MODE_OPTIONS["chat"])
         run_id = None
         final = None
         events = agent.run(command_text, session_id=chat_id, stream=True, stream_events=True, yield_run_output=True)

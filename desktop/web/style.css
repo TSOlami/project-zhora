@@ -189,9 +189,13 @@ html, body {
   flex: 1;
 }
 
+#engine-controls {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
 #engine-controls button {
   padding: 6px 10px;
-  margin-left: 6px;
   border-radius: 6px;
   border: 1px solid #2a2b2e;
   background: transparent;
@@ -201,16 +205,21 @@ html, body {
 }
 #engine-controls button:hover { background: #202124; }
 
-#mode-select {
-  margin-left: 6px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #2a2b2e;
-  background: #202124;
-  color: #e8e8ea;
-  font-size: 12px;
-  cursor: pointer;
+.settings-section-label {
+  margin: 18px 0 2px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2b2e;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b6d74;
 }
+.settings-section-label:first-of-type { margin-top: 14px; }
+
+/* #mode-select itself is now the hidden native <select> (source of truth for
+   .value/change) - its visible replacement is .cselect-trigger--topbar,
+   styled above near the rest of the custom select widget. */
 
 #settings-btn { margin-left: auto; }
 
@@ -486,6 +495,51 @@ html, body {
   align-items: center;
   gap: 8px;
 }
+
+/* Custom toggle switch, replacing the native checkbox box entirely via
+   appearance:none - the native element still owns all keyboard/focus/click
+   semantics, only the paint is custom. Applied via class rather than a
+   blanket input[type=checkbox] selector so any future plain checkbox opts
+   in deliberately. */
+input[type="checkbox"].switch-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 999px;
+  background: #2a2b2e;
+  border: 1px solid #35363a;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+input[type="checkbox"].switch-checkbox::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #c7c7cc;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+input[type="checkbox"].switch-checkbox:checked {
+  background: #2f6feb;
+  border-color: #2f6feb;
+}
+input[type="checkbox"].switch-checkbox:checked::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+input[type="checkbox"].switch-checkbox:hover { border-color: #4a4b4f; }
+input[type="checkbox"].switch-checkbox:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
+}
+input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allowed; }
 .modal-content input[type="text"], .modal-content select {
   width: 100%;
   margin-top: 6px;
@@ -495,6 +549,108 @@ html, body {
   background: #202124;
   color: #e8e8ea;
 }
+
+/* Custom select widget - the native <select> stays in the DOM (hidden) as
+   the actual source of truth for .value/change events, so no app.js code
+   that reads/writes a select's .value has to change. This is just its
+   visual replacement: a trigger button + a positioned popup listbox,
+   following the ARIA "select-only combobox" pattern (roving
+   aria-activedescendant, not real DOM focus moves into the listbox). */
+.cselect-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #2a2b2e;
+  background: #202124;
+  color: #e8e8ea;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.cselect-trigger:hover { border-color: #3a3b3f; }
+.cselect-trigger:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 1px;
+}
+.cselect-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cselect-chevron {
+  display: flex;
+  flex-shrink: 0;
+  color: #9a9a9e;
+  transition: transform 0.15s ease;
+}
+.cselect-trigger[aria-expanded="true"] .cselect-chevron { transform: rotate(180deg); }
+
+/* Topbar variant: compact, inline, matches the old #mode-select sizing. */
+.cselect-trigger--topbar {
+  width: auto;
+  margin-top: 0;
+  margin-left: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.cselect-popup {
+  position: fixed;
+  z-index: 30;
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid #2a2b2e;
+  background: #1e1f22;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.cselect-popup.hidden { display: none; }
+.cselect-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #c7c7cc;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cselect-option.active { background: #26282c; color: #e8e8ea; }
+.cselect-option[aria-selected="true"] { color: #fff; }
+.cselect-option[aria-selected="true"]::after {
+  content: "✓";
+  color: #2f6feb;
+  font-size: 12px;
+}
+
+.path-field {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.path-field input[type="text"] { margin-top: 0; }
+.path-field button {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #2a2b2e;
+  background: #202124;
+  color: #c7c7cc;
+  cursor: pointer;
+  font-size: 13px;
+}
+.path-field button:hover { background: #26282c; color: #e8e8ea; }
 .modal-content pre {
   background: #141517;
   padding: 10px;

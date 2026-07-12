@@ -1,0 +1,218 @@
+OPENWAKEWORD SETUP GUIDE FOR PROJECT ZHORA
+============================================
+Low-level, step-by-step instructions for getting a working "Hey Zhora" wake
+word into this project. This matches the actual code in this repo as of
+2026-07-12 (models/create_model_instance.py, modules/trigger_word_detection.py,
+config.py). Read it alongside those files if anything looks out of date.
+
+------------------------------------------------------------
+0. WHERE THIS FITS IN THE CODE (read this first)
+------------------------------------------------------------
+- models/create_model_instance.py builds the openWakeWord Model():
+    - If WAKE_WORD_MODEL_PATH is set  -> loads that .onnx file (your custom
+      trained "Hey Zhora" model). This is the real, permanent path.
+    - Else if WAKE_WORD_NAME is set   -> loads a bundled PRETRAINED model by
+      name (e.g. "hey_jarvis"). This is ONLY a temporary stand-in to prove
+      the pipeline works before your model is trained. Do not ship or rely
+      on this long-term - see BRANDING WARNING in section 4.
+    - Else -> raises RuntimeError immediately. This is intentional: there is
+      no default/competitor wake word baked in.
+- modules/trigger_word_detection.py runs the actual mic loop:
+    - Sample rate: 16000 Hz, mono, int16
+    - Chunk size: 1280 samples = 80ms (this is openWakeWord's own recommended
+      frame size - do not change it unless you know why)
+    - Every chunk is fed to model.predict(chunk), which returns a dict of
+      {model_name: score}. If ANY score >= WAKE_WORD_THRESHOLD, the function
+      returns True and the engine moves on to STT.
+- config.py reads WAKE_WORD_MODEL_PATH, WAKE_WORD_NAME, WAKE_WORD_THRESHOLD
+  from .env (via python-dotenv). WAKE_WORD_THRESHOLD defaults to 0.5.
+- The wake word model is only (re)loaded when the engine starts/restarts -
+  changing .env requires an engine Restart (tray menu or Settings panel) to
+  take effect, not just saving the file.
+
+------------------------------------------------------------
+1. INSTALL DEPENDENCIES
+------------------------------------------------------------
+openwakeword and onnxruntime are already pinned in requirements.txt:
+    openwakeword>=0.6.0
+    onnxruntime>=1.24.1
+
+From the project root, with the venv active:
+
+    py -m venv venv                      (skip if venv already exists)
+    venv\Scripts\activate
+    pip install -r requirements.txt
+
+Verify the import works:
+
+    py -c "from openwakeword.model import Model; print('ok')"
+
+If this fails with a DLL / onnxruntime load error on Windows, you're most
+likely missing the Visual C++ Redistributable - install the latest
+"Microsoft Visual C++ Redistributable x64" from Microsoft and retry.
+
+------------------------------------------------------------
+2. QUICK SANITY CHECK WITH A PRETRAINED MODEL (optional but recommended)
+------------------------------------------------------------
+Before spending time training "Hey Zhora", prove the mic + inference loop
+works at all using one of openWakeWord's bundled pretrained models
+(e.g. "alexa", "hey_jarvis", "hey_mycroft"). This is a TEMPORARY test only.
+
+1. In .env, leave WAKE_WORD_MODEL_PATH blank and set:
+       WAKE_WORD_NAME=hey_jarvis
+2. Restart the engine (tray icon -> Restart, or run `py main.py`).
+3. Say "Hey Jarvis" near your mic. Console should print that the trigger
+   fired and move on to speech recognition.
+4. Once confirmed working, blank out WAKE_WORD_NAME again and go train your
+   own model (section 3). Do not leave a pretrained third-party wake word
+   name in .env for real use - see BRANDING WARNING in section 4.
+
+If nothing triggers:
+- Check Windows microphone permissions (Settings -> Privacy -> Microphone).
+- Check the correct input device is default, or pass an explicit device to
+  sounddevice (see section 6, troubleshooting).
+- Lower WAKE_WORD_THRESHOLD to 0.3 temporarily to rule out a sensitivity
+  issue vs. a completely dead mic pipeline.
+
+------------------------------------------------------------
+3. TRAIN THE CUSTOM "HEY ZHORA" MODEL
+------------------------------------------------------------
+openWakeWord ships a free Google Colab notebook that trains a custom
+wake-word model from SYNTHETIC speech samples (no need to record yourself
+saying "Hey Zhora" hundreds of times). This is the standard workflow.
+
+3.1 Open the notebook
+    - Go to the openWakeWord GitHub repo: github.com/dscripka/openWakeWord
+    - Find "Custom Model Training" documentation from the README table of
+      contents - it links to a Colab notebook
+      (google_colab_notebook.ipynb / similar name; the repo README has the
+      current, correct link - it is not reproduced here as it can change).
+    - Open it in Google Colab. You need a Google account for Colab itself,
+      but NOT an account with any AI vendor - the whole pipeline is local
+      TTS synthesis + local model training running on Colab's free GPU.
+
+3.2 Configure the notebook for "Hey Zhora"
+    - Set the target phrase variable to: Hey Zhora
+    - Set number of synthetic training samples: 1000-2000 is a reasonable
+      default for a solid model (more = better but slower to generate/train).
+    - Leave negative/background sample settings at the notebook's defaults
+      unless you have a specific noisy-environment concern - the defaults
+      already mix in general speech, noise, and music as negatives.
+
+3.3 Run the notebook cells in order
+    - It will: generate synthetic TTS samples of "Hey Zhora" in many voices,
+      generate/augment negative examples, extract audio features, and train
+      a small classifier model on top of openWakeWord's shared embedding
+      model.
+    - This takes anywhere from ~20 minutes to a couple hours on Colab's free
+      GPU tier depending on sample count. Let it finish uninterrupted.
+
+3.4 Export
+    - The final cells export a .onnx model file (some notebook versions also
+      offer .tflite - use the .onnx one, since create_model_instance.py uses
+      inference_framework="onnx").
+    - Download the resulting file, e.g. hey_zhora.onnx.
+
+3.5 Install it into the project
+    - Create the directory if it doesn't exist yet:
+          mkdir models\wakeword
+    - Copy the downloaded file in:
+          copy hey_zhora.onnx models\wakeword\hey_zhora.onnx
+    - In .env, set:
+          WAKE_WORD_MODEL_PATH=models/wakeword/hey_zhora.onnx
+          WAKE_WORD_NAME=
+    - Restart the engine.
+
+------------------------------------------------------------
+4. BRANDING WARNING (read this - do not skip)
+------------------------------------------------------------
+Never leave a pretrained third-party assistant's wake word (e.g. "hey_jarvis",
+"alexa", "hey_mycroft", or any other product/company's wake word) configured
+as the real, shipped default for this project. That's a legal/liability risk,
+not just a cosmetic one. Those bundled models are for pipeline testing only
+(section 2). The only wake word this project should ship with is your own
+custom-trained "Hey Zhora" model from section 3.
+
+------------------------------------------------------------
+5. TUNING THE DETECTION THRESHOLD
+------------------------------------------------------------
+WAKE_WORD_THRESHOLD in .env (default 0.5) is compared against the model's
+per-frame prediction score (0.0-1.0):
+
+    if any(score >= WAKE_WORD_THRESHOLD for score in predictions.values()):
+        return True
+
+- Lower threshold (e.g. 0.3-0.4): more sensitive, triggers more easily, but
+  more false positives (random speech/noise accidentally firing it).
+- Higher threshold (e.g. 0.6-0.7): fewer false positives, but you may need
+  to say the phrase more clearly/loudly to trigger it.
+- Start at 0.5, then adjust after real-world testing in your actual room
+  with your actual mic. Change the .env value, restart the engine, retest.
+- If you trained with a custom notebook, the notebook's own validation step
+  usually reports a recommended threshold for your specific model - use
+  that as your starting point instead of the blanket 0.5 default if given.
+
+------------------------------------------------------------
+6. TESTING AND TROUBLESHOOTING
+------------------------------------------------------------
+Standalone test (no need to run the full app) - from the project root with
+the venv active:
+
+    py -c "
+from modules.trigger_word_detection import listen_for_trigger_word
+print('Say the wake word now...')
+result = listen_for_trigger_word()
+print('Triggered!' if result else 'Aborted or errored.')
+"
+
+Common issues:
+
+- RuntimeError: "No wake word configured"
+    -> Neither WAKE_WORD_MODEL_PATH nor WAKE_WORD_NAME is set in .env.
+       Set one of them (section 2 or 3) and restart the engine.
+
+- FileNotFoundError / model fails to load
+    -> WAKE_WORD_MODEL_PATH points to a file that doesn't exist. Check the
+       path is relative to the project root (or use an absolute path), and
+       that the file extension is .onnx.
+
+- No detections at all, ever
+    -> Confirm the mic is actually capturing audio: watch the amplitude
+       value the loop feeds into engine_state.push_amplitude() - if it's
+       near-zero even while you're talking, the mic input itself is the
+       problem, not the wake word model. Check Windows mic permissions and
+       default input device (Settings -> System -> Sound -> Input).
+    -> If you have multiple input devices (e.g. a webcam mic + a headset),
+       sounddevice may be defaulting to the wrong one. List devices with:
+           py -c "import sounddevice as sd; print(sd.query_devices())"
+       and set the correct default input device in Windows sound settings,
+       or extend sd.InputStream(...) in trigger_word_detection.py with an
+       explicit device=<index> if you need per-device control.
+
+- Detections fire constantly / on unrelated speech
+    -> Threshold too low, or the trained model is undertrained (too few
+       samples, or negative samples didn't cover your actual environment's
+       background noise). Raise WAKE_WORD_THRESHOLD first as a quick fix;
+       retrain with more/better samples if it's still unreliable.
+
+- Detection is laggy / feels slow to trigger
+    -> This machine runs CPU-only inference (no CUDA - see project hardware
+       notes). openWakeWord's per-frame inference itself is lightweight
+       (small ONNX model, 80ms frames), so lag here is usually NOT the
+       wake-word model - it's more likely downstream (STT/LLM) being
+       mistaken for wake-word lag. Confirm by timing only up to the
+       "Triggered!" print in the standalone test above.
+
+------------------------------------------------------------
+7. FILE/CONFIG CHECKLIST SUMMARY
+------------------------------------------------------------
+[ ] pip install -r requirements.txt (openwakeword, onnxruntime present)
+[ ] Optional: pretrained model smoke test via WAKE_WORD_NAME
+[ ] Trained hey_zhora.onnx via openWakeWord's Colab training notebook
+[ ] File placed at models/wakeword/hey_zhora.onnx
+[ ] .env: WAKE_WORD_MODEL_PATH=models/wakeword/hey_zhora.onnx
+[ ] .env: WAKE_WORD_NAME=   (blank - not using a pretrained stand-in anymore)
+[ ] .env: WAKE_WORD_THRESHOLD tuned for your room/mic
+[ ] Engine restarted after every .env change
+[ ] Standalone test (section 6) triggers reliably on "Hey Zhora"
+[ ] Full app test: say "Hey Zhora" + a command, confirm STT/LLM/TTS all run

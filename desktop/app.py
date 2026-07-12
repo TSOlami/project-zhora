@@ -7,7 +7,7 @@ import threading
 import webview
 
 import config
-from desktop.shortcut import create_desktop_shortcut
+from desktop.shortcut import is_start_on_boot_enabled, set_start_on_boot
 from modules import storage, tool_registry
 from modules.engine import engine
 from modules.env_file import set_env_value
@@ -36,9 +36,13 @@ def _find_ollama_exe():
 class Api:
     def __init__(self):
         self._window = None
+        self._quit_callback = None
 
     def set_window(self, window):
         self._window = window
+
+    def set_quit_callback(self, callback):
+        self._quit_callback = callback
 
     # --- Chats ---
     def list_chats(self):
@@ -175,13 +179,27 @@ class Api:
     def get_status(self):
         return {"status": engine_state.status, "running": engine.is_running()}
 
+    def browse_wake_word_model(self):
+        """Opens the native Windows file picker for the wake-word .onnx file,
+        instead of asking the user to type or paste a filesystem path by hand.
+        """
+        if not self._window:
+            return None
+        result = self._window.create_file_dialog(
+            webview.FileDialog.OPEN,
+            file_types=("ONNX model (*.onnx)", "All files (*.*)"),
+        )
+        return result[0] if result else None
+
     # --- Settings ---
     def get_settings(self):
         return {
             "ollama_model": get_current_model(),
             "wake_word_model_path": config.WAKE_WORD_MODEL_PATH or "",
             "wake_word_name": config.WAKE_WORD_NAME or "",
-            "auto_speak_responses": config.AUTO_SPEAK_RESPONSES,
+            "auto_speak_responses": config.get_auto_speak_responses(),
+            "close_behavior": config.get_close_behavior(),
+            "start_on_boot": is_start_on_boot_enabled(),
         }
 
     def set_setting(self, key, value):
@@ -190,17 +208,32 @@ class Api:
             "WAKE_WORD_NAME",
             "WAKE_WORD_THRESHOLD",
             "AUTO_SPEAK_RESPONSES",
+            "CLOSE_BEHAVIOR",
         }
         if key not in allowed_keys:
             raise ValueError(f"Unknown setting: {key}")
         set_env_value(key, str(value))
 
-    def create_desktop_shortcut(self):
+    def set_start_on_boot(self, enabled):
         try:
-            path = create_desktop_shortcut()
-            return {"ok": True, "path": path}
+            set_start_on_boot(enabled)
+            return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # --- Close-window behavior ---
+    def resolve_close_choice(self, action, remember):
+        """Called from the in-app "close Zhora?" dialog (shown when
+        CLOSE_BEHAVIOR is "ask") once the user picks keep-in-tray or quit.
+        """
+        if remember:
+            set_env_value("CLOSE_BEHAVIOR", action)
+        if action == "quit":
+            if self._quit_callback:
+                self._quit_callback()
+        elif self._window:
+            engine_state.set_window_visible(False)
+            self._window.hide()
 
 
 def _pump_engine_events(window):
@@ -213,11 +246,19 @@ def _pump_engine_events(window):
             pass  # window may be closed/destroyed
 
 
-def build_window():
+def build_window(hidden=False):
     """Create the pywebview window and API bridge, and start the event pump.
 
     Does not start the engine or the blocking webview event loop - the caller
     (run_desktop.py) owns startup ordering so it can also wire up the tray icon.
+
+    hidden=True starts the window unshown (used for the --background autostart
+    launch, so signing in doesn't immediately pop a chat window open - it just
+    starts listening in the tray, same as if you'd minimized it yourself).
+
+    Returns (window, api) - the caller needs the api reference too, to wire
+    set_quit_callback() once the tray (which owns the actual quit sequence)
+    exists.
     """
     api = Api()
     window = webview.create_window(
@@ -227,8 +268,9 @@ def build_window():
         width=1100,
         height=750,
         min_size=(720, 480),
+        hidden=hidden,
     )
     api.set_window(window)
 
     threading.Thread(target=_pump_engine_events, args=(window,), daemon=True).start()
-    return window
+    return window, api

@@ -70,6 +70,13 @@ class ZhoraTray:
         self.icon.stop()
         self._on_quit()
 
+    def quit(self):
+        """Public alias so other entry points (the in-app close dialog's
+        "Quit completely" choice) can trigger the exact same teardown
+        sequence as the tray's own Quit menu item, instead of duplicating it.
+        """
+        self._quit()
+
     def _watch_status(self):
         subscription = engine_state.subscribe()
         while True:
@@ -80,6 +87,22 @@ class ZhoraTray:
             color = _STATUS_COLORS.get(status, (128, 128, 128))
             self.icon.icon = _make_icon_image(color)
             self.icon.title = f"Zhora - {status.replace('_', ' ')}"
+
+            if status == "awaiting_confirmation" and not engine_state.window_visible:
+                # The confirmation modal only exists inside the (currently
+                # hidden) chat window, so without this the user has no way
+                # to know a tool call is waiting on them - it just silently
+                # times out and denies after 20s. A toast is the standard
+                # pattern for "app running in the background needs your
+                # attention" (this is exactly what e.g. VPN clients and
+                # backup tools do for the same kind of background approval).
+                detail = event.get("detail") or {}
+                function_name = detail.get("function_name", "a tool call")
+                self.icon.notify(
+                    f'Zhora wants to run "{function_name}". Open Zhora to approve or deny - '
+                    f"it's denied automatically if no one answers in time.",
+                    "Zhora needs your approval",
+                )
 
     def run(self):
         threading.Thread(target=self._watch_status, daemon=True).start()
