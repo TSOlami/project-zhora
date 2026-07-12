@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Zhora</title>
+<link rel="stylesheet" href="vendor/highlight-github-dark.min.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -54,15 +55,28 @@
         </div>
         <div id="canvas-panel" class="hidden">
           <div class="canvas-header">
-            <span title="Canvas holds code and long-form text Zhora writes, pulled out of the chat so it's easier to read and copy. It opens on its own whenever a response includes a code block.">Canvas</span>
-            <div>
+            <span id="canvas-title" title="Canvas holds code Zhora writes, pulled out of the chat so it's easier to read, copy, and preview.">Canvas</span>
+            <div class="canvas-tabs">
+              <button id="canvas-tab-code" class="canvas-tab active" type="button">Code</button>
+              <button id="canvas-tab-preview" class="canvas-tab hidden" type="button">Preview</button>
+            </div>
+            <div class="canvas-header-actions">
+              <span id="canvas-nav" class="canvas-nav"></span>
+              <button id="canvas-prev" title="Previous artifact" disabled>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <button id="canvas-next" title="Next artifact" disabled>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
               <button id="canvas-copy" title="Copy">Copy</button>
+              <button id="canvas-download" title="Download">Download</button>
               <button id="canvas-close" title="Close">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
           </div>
-          <pre id="canvas-content"><code id="canvas-code"><span id="canvas-empty" class="canvas-empty">Canvas shows code and long-form content Zhora writes, pulled out of the chat so you can read and copy it more easily. It appears automatically when a response includes a code block - there's nothing to switch on.</span></code></pre>
+          <pre id="canvas-content"><code id="canvas-code" class="hljs"><span id="canvas-empty" class="canvas-empty">Canvas shows code Zhora writes, pulled out of the chat so you can read, copy, and preview it more easily. Click a code card in the chat to reopen it here.</span></code></pre>
+          <iframe id="canvas-preview-frame" class="hidden" sandbox="allow-scripts"></iframe>
         </div>
       </div>
     </main>
@@ -102,9 +116,9 @@
       <label>Voice
         <select id="voice-select"></select>
       </label>
-      <label>Speaking rate
+      <label>Speaking rate <span class="hint">(lower = faster)</span>
         <div class="range-field">
-          <input id="voice-rate" type="range" min="80" max="320" step="10" />
+          <input id="voice-rate" type="range" min="0.5" max="2" step="0.05" />
           <span id="voice-rate-value" class="range-value"></span>
         </div>
       </label>
@@ -187,6 +201,8 @@
     </div>
   </div>
 
+  <script src="vendor/highlight.min.js"></script>
+  <script src="artifacts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

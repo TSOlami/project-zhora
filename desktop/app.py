@@ -253,7 +253,7 @@ class Api:
         _speak_in_background(
             "This is how I sound.",
             voice_id=voice_id or None,
-            rate=int(rate) if rate else None,
+            rate=float(rate) if rate else None,
             volume=float(volume) if volume not in (None, "") else None,
         )
         return {"ok": True}

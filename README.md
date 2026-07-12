@@ -24,7 +24,7 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
 - **Ollama**: Running local AI models
 - **Llama 3**: AI language model (default: `taozhiyuai/llama-3-8b-lexi-uncensored:f16`, configurable)
 - **Agno**: Agent framework providing the tool-calling library (web search, calculator, and more installable toolkits) — successor to Phidata
-- **pyttsx3**: Text-to-speech conversion
+- **Piper**: Free, local, offline neural text-to-speech
 
 ## Project Structure
 
@@ -46,7 +46,7 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
   - **shared_state.py**: Engine status + pending-confirmation state shared
     between the engine, the confirmation gate, and the desktop UI
   - **storage.py**: Chat list/history, backed by Agno's own session database
-  - **text_to_speech.py**: Converts text to speech
+  - **text_to_speech.py**: Converts text to speech via a local Piper voice
 - **models/**: Contains model-related code
   - **create_model_instance.py**: Creates the openWakeWord model instance
 - **desktop/**: The desktop client
@@ -60,9 +60,10 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
 - A downloaded Vosk model for offline speech-to-text (see Setup below) - or,
   if you set `STT_ENGINE=google` instead, an internet connection and no
   model download
+- A downloaded Piper voice for text-to-speech (see Setup below)
 
-No account or API key is required for wake word detection, or for the default
-(Vosk) speech-to-text backend.
+No account or API key is required for wake word detection, or for the
+default (Vosk/Piper) speech and voice backends.
 
 ## How It Works
 
@@ -106,14 +107,22 @@ No account or API key is required for wake word detection, or for the default
      (containing `am/`, `conf/`, `graph/`, etc. directly inside it) - or set
      `VOSK_MODEL_PATH` in `.env` if you put it somewhere else
 
-7. Install Ollama:
+7. Download a Piper voice for text-to-speech:
+   ```
+   python -m piper.download_voices en_US-lessac-medium data/models/piper
+   ```
+   Browse more voices at [huggingface.co/rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) -
+   any downloaded `.onnx` file dropped into `data/models/piper/` becomes
+   selectable in the desktop app's Settings panel.
+
+8. Install Ollama:
    - Follow instructions at https://ollama.ai/ to install Ollama
    - Pull the model set in `.env` (default shown below):
      ```
      ollama pull taozhiyuai/llama-3-8b-lexi-uncensored:f16
      ```
 
-8. Run the application - either the plain CLI:
+9. Run the application - either the plain CLI:
    ```
    python main.py
    ```
@@ -122,7 +131,7 @@ No account or API key is required for wake word detection, or for the default
    python run_desktop.py
    ```
 
-9. Say the wake word followed by your command, or type into the chat window
+10. Say the wake word followed by your command, or type into the chat window
 
 ## Switching Models
 

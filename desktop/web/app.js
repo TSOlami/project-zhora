@@ -1,6 +1,7 @@
 let api = null;
 let activeChatId = null;
 let streamingRow = null;
+let streamingText = "";
 let pendingToolNames = null;
 let pendingUserRow = null;
 let thinkingRow = null;
@@ -367,6 +368,10 @@ function makeSpeakButton(text) {
   return btn;
 }
 
+// Always copies the raw source (markdown incl. code fences), never the
+// rendered bubble's .textContent - once content goes through
+// renderMessageContent, .textContent would return reference-card labels
+// ("3 lines") instead of the actual code inside them.
 function makeCopyButton(getText) {
   const btn = document.createElement("button");
   btn.className = "msg-action-btn copy-btn";
@@ -489,7 +494,8 @@ function addMessageRow(role, content, toolNames, runId, options) {
 
   const bubble = document.createElement("div");
   bubble.className = "bubble " + (role === "user" ? "user" : "assistant");
-  bubble.textContent = content;
+  if (options.seedArtifacts) row._artifacts = options.seedArtifacts;
+  renderMessageContent(row, bubble, content);
   wrap.appendChild(bubble);
   row.appendChild(wrap);
 
@@ -500,7 +506,7 @@ function addMessageRow(role, content, toolNames, runId, options) {
   if (role === "assistant") {
     actions.appendChild(makeSpeakButton(content));
   }
-  actions.appendChild(makeCopyButton(() => bubble.textContent));
+  actions.appendChild(makeCopyButton(() => row._rawText));
   if (role === "user") {
     actions.appendChild(makeEditButton(row, bubble, content));
   } else if (!options.noRetry) {
@@ -616,9 +622,10 @@ async function createChat() {
 async function switchChat(chatId) {
   activeChatId = chatId;
   streamingRow = null;
+  streamingText = "";
   pendingUserRow = null;
   thinkingRow = null;
-  resetCanvas();
+  resetArtifacts();
   await api.switch_chat(chatId);
   const messages = await api.get_messages(chatId);
   messagesEl.innerHTML = "";
@@ -918,61 +925,6 @@ document.getElementById("memory-clear-all").onclick = async () => {
   await refreshMemoryList();
 };
 
-// --- Canvas panel ---
-const canvasPanel = document.getElementById("canvas-panel");
-const canvasCode = document.getElementById("canvas-code");
-const canvasDot = document.getElementById("canvas-dot");
-const CANVAS_EMPTY_HTML = canvasCode.innerHTML;
-let canvasRawText = "";
-
-function resetCanvas() {
-  canvasPanel.classList.add("hidden");
-  canvasRawText = "";
-  canvasCode.innerHTML = CANVAS_EMPTY_HTML;
-  if (canvasDot) canvasDot.classList.add("hidden");
-}
-
-const CODE_BLOCK_RE = /```(\w*)\n([\s\S]*?)```/g;
-const KEYWORDS = new Set([
-  "def", "class", "return", "if", "elif", "else", "for", "while", "import", "from",
-  "function", "const", "let", "var", "async", "await", "try", "except", "catch",
-  "finally", "with", "as", "in", "not", "and", "or", "true", "false", "none", "null",
-  "public", "private", "static", "void", "new",
-]);
-
-function highlight(code) {
-  const escaped = code
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  const lines = escaped.split("\n").map((line) => {
-    let tokenized = line.replace(/(#.*|\/\/.*)/, '<span class="tok-comment">$1</span>');
-    tokenized = tokenized.replace(/(&quot;.*?&quot;|'.*?'|".*?")/g, '<span class="tok-string">$1</span>');
-    tokenized = tokenized.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
-    tokenized = tokenized.replace(
-      new RegExp(`\\b(${[...KEYWORDS].join("|")})\\b`, "gi"),
-      '<span class="tok-keyword">$1</span>'
-    );
-    return tokenized;
-  });
-  return lines.join("\n");
-}
-
-function showCanvasFromResponse(text) {
-  const matches = [...text.matchAll(CODE_BLOCK_RE)];
-  if (matches.length === 0) return;
-  const last = matches[matches.length - 1];
-  canvasRawText = last[2];
-  canvasCode.innerHTML = highlight(canvasRawText);
-  canvasPanel.classList.remove("hidden");
-  if (canvasDot) canvasDot.classList.remove("hidden");
-}
-
-document.getElementById("canvas-btn").onclick = () => canvasPanel.classList.toggle("hidden");
-document.getElementById("canvas-close").onclick = () => canvasPanel.classList.add("hidden");
-document.getElementById("canvas-copy").onclick = () => navigator.clipboard.writeText(canvasRawText);
-
 // --- Engine event pump (pushed from Python via window.evaluate_js) ---
 window.onZhoraEvent = (event) => {
   if (event.status === "amplitude") {
@@ -1022,6 +974,7 @@ window.onZhoraEvent = (event) => {
       addMessageRow("user", event.detail.user_text, null, event.detail.run_id);
     }
     pendingUserRow = null;
+    streamingText = "";
     streamingRow = addMessageRow("assistant", "", pendingToolNames, event.detail.run_id);
     pendingToolNames = null;
     refreshRetryVisibility();
@@ -1034,7 +987,8 @@ window.onZhoraEvent = (event) => {
     streamingRow
   ) {
     const wasNearBottom = isNearBottom();
-    streamingRow.bubble.textContent += event.detail.delta;
+    streamingText += event.detail.delta;
+    renderMessageContent(streamingRow.row, streamingRow.bubble, streamingText);
     scrollToBottomIfNear(wasNearBottom);
   }
 
@@ -1046,14 +1000,20 @@ window.onZhoraEvent = (event) => {
       // offer a retry that would silently redo an unrelated older turn.
       const failed = !event.detail.response && !event.detail.run_id;
       const finalText = event.detail.response || "(No response - something went wrong.)";
+      // Carries over the streaming row's artifact ids (by position) so a
+      // code block that was live-following in Canvas keeps its identity
+      // instead of becoming an orphaned duplicate once this row replaces it.
+      const seedArtifacts = streamingRow ? streamingRow.row._artifacts : undefined;
       if (streamingRow) {
         streamingRow.row.remove();
         streamingRow = null;
       }
-      const { bubble } = addMessageRow("assistant", finalText, null, event.detail.run_id, { noRetry: failed });
+      const { bubble } = addMessageRow("assistant", finalText, null, event.detail.run_id, {
+        noRetry: failed,
+        seedArtifacts,
+      });
       if (failed) bubble.classList.add("bubble-error");
       refreshRetryVisibility();
-      if (event.detail.response) showCanvasFromResponse(event.detail.response);
     }
   }
 

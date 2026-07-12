@@ -16,6 +16,13 @@ STT_ENGINE = os.getenv("STT_ENGINE", "vosk").lower()
 
 VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH") or os.path.join(DATA_DIR, "models", "vosk-model-small-en-us-0.15")
 
+# Default Piper voice (.onnx model file). list_voices() in text_to_speech.py
+# scans this file's directory for every other *.onnx there too - drop
+# another downloaded Piper voice in the same folder to make it selectable.
+PIPER_MODEL_PATH = os.getenv("PIPER_MODEL_PATH") or os.path.join(
+    DATA_DIR, "models", "piper", "en_US-lessac-medium.onnx"
+)
+
 # Trailing silence (seconds) that ends a recording, and the int16 amplitude
 # threshold for "not silence" - too low a threshold never detects silence at
 # all (room noise keeps it "started"; recording then runs until MAX_DURATION).
@@ -50,17 +57,16 @@ def get_close_behavior():
     return value if value in ("ask", "tray", "quit") else "ask"
 
 
-# Voice/rate/volume overrides for TTS. Unset (None) means "use whatever
-# pyttsx3/SAPI5 already defaults to" rather than baking in a guessed value -
-# the actual default depends on which voices are installed on this Windows
-# install, so text_to_speech.py reads it straight from the engine itself.
+# Voice/rate/volume overrides for TTS. VOICE_ID is a Piper .onnx model path
+# (see list_voices() in text_to_speech.py); VOICE_RATE is Piper's
+# length_scale (1.0 = normal, lower = faster, higher = slower).
 def get_voice_id():
     return os.getenv("VOICE_ID") or None
 
 
 def get_voice_rate():
     value = os.getenv("VOICE_RATE")
-    return int(value) if value else None
+    return float(value) if value else None
 
 
 def get_voice_volume():
