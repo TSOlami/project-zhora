@@ -1,9 +1,13 @@
+import logging
+
 import numpy as np
 import sounddevice as sd
 
 from config import WAKE_WORD_THRESHOLD
 from models.create_model_instance import create_wakeword_model
 from modules.shared_state import engine_state
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 1280  # 80ms at 16kHz, openWakeWord's recommended frame size
@@ -19,7 +23,7 @@ def listen_for_trigger_word(model=None, should_abort=None):
         if model is None:
             model = create_wakeword_model()
 
-        print("Listening for trigger word...")
+        logger.info("Listening for trigger word...")
 
         with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
             while True:
@@ -33,6 +37,6 @@ def listen_for_trigger_word(model=None, should_abort=None):
                 if any(score >= WAKE_WORD_THRESHOLD for score in predictions.values()):
                     return True
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    except Exception:
+        logger.exception("Wake-word listening loop failed")
         return False

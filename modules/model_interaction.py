@@ -1,7 +1,10 @@
+import logging
 import os
+import threading
 
 from agno.agent import Agent, RunContentEvent, RunOutput, ToolCallCompletedEvent
 from agno.db.sqlite import SqliteDb
+from agno.memory import MemoryManager
 from agno.models.ollama import Ollama
 from agno.run.base import RunStatus
 
@@ -10,9 +13,31 @@ from modules.env_file import set_env_value
 from modules.tool_confirmation import request_confirmation
 from modules.tool_registry import build_enabled_tool_instances
 
+logger = logging.getLogger(__name__)
+
 _db = SqliteDb(db_file=os.path.join(DATA_DIR, "chats.db"))
 
 _state = {"model": OLLAMA_MODEL, "agent": None}
+
+# Zhora is a single-user local assistant (see project vision) - every memory
+# belongs to this one fixed user, there's no multi-tenant id to track.
+MEMORY_USER_ID = "default"
+
+# Phrases that force a memory-extraction pass regardless of whether the
+# model's own agentic judgment (the `update_user_memory` tool it decides to
+# call on its own) would have fired - explicit requests must always be
+# honored, not left to a small local model's discretion.
+_REMEMBER_TRIGGERS = (
+    "remember that",
+    "remember this",
+    "remember i",
+    "remember my",
+    "don't forget",
+    "do not forget",
+    "forget that",
+    "forget i",
+    "forget my",
+)
 
 BASE_INSTRUCTIONS = (
     "You are Zhora, the user's personal assistant. Be direct and natural. Only call a tool "
@@ -75,14 +100,62 @@ def refresh_tools():
 
 def _get_agent():
     if _state["agent"] is None:
+        model = Ollama(id=_state["model"], host=OLLAMA_HOST)
         _state["agent"] = Agent(
-            model=Ollama(id=_state["model"], host=OLLAMA_HOST),
+            model=model,
             db=_db,
             add_history_to_context=True,
             tools=build_enabled_tool_instances(),
             markdown=False,
+            user_id=MEMORY_USER_ID,
+            # Reuses the same local Ollama model for memory extraction (the
+            # default OpenAI fallback would otherwise require an API key this
+            # project never has) - see agentic memory design notes below.
+            memory_manager=MemoryManager(model=model, db=_db),
+            enable_agentic_memory=True,
+            add_memories_to_context=True,
         )
     return _state["agent"]
+
+
+def _has_explicit_memory_trigger(text):
+    lowered = text.lower()
+    return any(trigger in lowered for trigger in _REMEMBER_TRIGGERS)
+
+
+def force_remember_if_triggered(text):
+    """If text explicitly asks to remember/forget something, force a memory
+    extraction pass for it, in the background, regardless of whether the
+    model's own in-line judgment (the `update_user_memory` tool it can choose
+    to call while replying) would have caught it. Backgrounded the same way
+    speak_text() is - the memory pass is its own model call, and there's no
+    reason to make the user wait on it before seeing their reply.
+    """
+    if not _has_explicit_memory_trigger(text):
+        return
+    agent = _get_agent()
+    threading.Thread(
+        target=agent.memory_manager.update_memory_task,
+        kwargs={"task": text, "user_id": MEMORY_USER_ID},
+        daemon=True,
+    ).start()
+
+
+def list_memories():
+    memories = _db.get_user_memories(user_id=MEMORY_USER_ID) or []
+    memories.sort(key=lambda m: m.updated_at or 0, reverse=True)
+    return [
+        {"id": m.memory_id, "memory": m.memory, "topics": m.topics or [], "updated_at": m.updated_at}
+        for m in memories
+    ]
+
+
+def delete_memory(memory_id):
+    _db.delete_user_memory(memory_id=memory_id, user_id=MEMORY_USER_ID)
+
+
+def clear_memories():
+    _db.clear_memories()
 
 
 def _build_instructions(mode, concise):
@@ -143,8 +216,8 @@ def stream_response_from_model(command_text, chat_id=None, concise=False, mode="
             {"name": t.tool_name, "result": t.result} for t in (final.tools or []) if t.tool_name
         ] if final else []
         yield "done", (final.content if final else ""), tool_calls, (final.run_id if final else run_id)
-    except Exception as e:
-        print(f"An error occurred while getting response from the model: {e}")
+    except Exception:
+        logger.exception("An error occurred while getting response from the model")
         yield "done", "", [], None
 
 
@@ -170,15 +243,6 @@ def regenerate_last_response(chat_id):
         agent.db.upsert_session(session)
         return user_text
     return None
-
-
-def fork_conversation(chat_id):
-    """Deep-copies the full chat into a new, independent Agno session and
-    returns its session_id. Used to snapshot the pre-edit conversation
-    before truncate_from_run() rewrites the active one.
-    """
-    agent = _get_agent()
-    return agent.fork_session(source_session_id=chat_id)
 
 
 def truncate_from_run(chat_id, run_id):

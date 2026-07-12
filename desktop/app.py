@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,7 @@ import webview
 import config
 from desktop.shortcut import is_start_on_boot_enabled, set_start_on_boot
 from modules import storage, tool_registry
+from modules.audio_feedback import play_wake_ack
 from modules.engine import engine
 from modules.env_file import set_env_value
 from modules.google_recog import recognize_speech_from_microphone
@@ -16,7 +18,26 @@ from modules.model_interaction import get_current_model, set_current_model
 from modules.shared_state import engine_state
 from modules.text_to_speech import speak_text
 
+logger = logging.getLogger(__name__)
+
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+
+def _speak_in_background(text, **kwargs):
+    """Runs speak_text() on a daemon thread with its own error handling -
+    a bare `threading.Thread(target=speak_text, ...)` swallows exceptions
+    into the default thread excepthook, which is invisible in the windowed
+    pythonw.exe build (no console), so a TTS failure looks like the speaker
+    button silently doing nothing.
+    """
+
+    def _run():
+        try:
+            speak_text(text, **kwargs)
+        except Exception:
+            logger.exception("Text-to-speech failed")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _find_ollama_exe():
@@ -86,13 +107,11 @@ class Api:
         return {"ok": True}
 
     def edit_message_and_resend(self, chat_id, run_id, new_text):
-        from modules.model_interaction import fork_conversation, truncate_from_run
+        from modules.model_interaction import truncate_from_run
 
         chat = storage.get_chat(chat_id)
         if chat is None:
             return {"ok": False, "error": "Chat not found"}
-        forked_id = fork_conversation(chat_id)
-        storage.register_forked_chat(forked_id, f"{chat['title']} (before edit)", chat["mode"])
         truncate_from_run(chat_id, run_id)
         engine.set_active_chat(chat_id)
         engine.submit_prompt(new_text, chat_id=chat_id)
@@ -124,6 +143,22 @@ class Api:
 
         refresh_tools()
 
+    # --- Memory ---
+    def list_memories(self):
+        from modules.model_interaction import list_memories
+
+        return list_memories()
+
+    def delete_memory(self, memory_id):
+        from modules.model_interaction import delete_memory
+
+        delete_memory(memory_id)
+
+    def clear_memories(self):
+        from modules.model_interaction import clear_memories
+
+        clear_memories()
+
     # --- Model ---
     def get_current_model(self):
         return get_current_model()
@@ -148,7 +183,7 @@ class Api:
 
     # --- On-demand TTS ---
     def speak_message(self, text):
-        threading.Thread(target=speak_text, args=(text,), daemon=True).start()
+        _speak_in_background(text)
 
     # --- Push-to-talk ---
     def start_voice_input(self, chat_id):
@@ -158,6 +193,7 @@ class Api:
         return {"ok": True}
 
     def _capture_voice_input(self, chat_id):
+        play_wake_ack()
         engine_state.set_status("listening_for_command")
         command = recognize_speech_from_microphone()
         if command:
@@ -193,6 +229,8 @@ class Api:
 
     # --- Settings ---
     def get_settings(self):
+        from modules.text_to_speech import get_engine_defaults
+
         return {
             "ollama_model": get_current_model(),
             "wake_word_model_path": config.WAKE_WORD_MODEL_PATH or "",
@@ -200,7 +238,25 @@ class Api:
             "auto_speak_responses": config.get_auto_speak_responses(),
             "close_behavior": config.get_close_behavior(),
             "start_on_boot": is_start_on_boot_enabled(),
+            "voice_id": config.get_voice_id() or "",
+            "voice_rate": config.get_voice_rate(),
+            "voice_volume": config.get_voice_volume(),
+            "voice_engine_defaults": get_engine_defaults(),
         }
+
+    def list_voices(self):
+        from modules.text_to_speech import list_voices
+
+        return list_voices()
+
+    def preview_voice(self, voice_id, rate, volume):
+        _speak_in_background(
+            "This is how I sound.",
+            voice_id=voice_id or None,
+            rate=int(rate) if rate else None,
+            volume=float(volume) if volume not in (None, "") else None,
+        )
+        return {"ok": True}
 
     def set_setting(self, key, value):
         allowed_keys = {
@@ -209,6 +265,9 @@ class Api:
             "WAKE_WORD_THRESHOLD",
             "AUTO_SPEAK_RESPONSES",
             "CLOSE_BEHAVIOR",
+            "VOICE_ID",
+            "VOICE_RATE",
+            "VOICE_VOLUME",
         }
         if key not in allowed_keys:
             raise ValueError(f"Unknown setting: {key}")

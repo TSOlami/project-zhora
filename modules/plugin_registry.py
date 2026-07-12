@@ -1,10 +1,13 @@
 import importlib.util
 import json
+import logging
 import os
 
 from agno.tools.toolkit import Toolkit
 
 from config import DATA_DIR, PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
 
 PLUGINS_DIR = os.path.join(PROJECT_ROOT, "plugins")
 PLUGINS_CONFIG_PATH = os.path.join(DATA_DIR, "plugins_config.json")
@@ -98,8 +101,8 @@ def build_enabled_plugin_instances():
         try:
             module = _load_plugin_module(plugin_id, plugin_dir, entrypoint)
             result = getattr(module, function_name)()
-        except Exception as e:
-            print(f"Failed to load plugin '{plugin_id}': {e}")
+        except Exception:
+            logger.exception("Failed to load plugin '%s'", plugin_id)
             continue
 
         if isinstance(result, Toolkit):

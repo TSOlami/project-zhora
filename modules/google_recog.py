@@ -1,8 +1,12 @@
+import logging
+
 import numpy as np
 import sounddevice as sd
 import speech_recognition as sr
 
 from modules.shared_state import engine_state
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK_DURATION = 0.05  # seconds per chunk analyzed for silence
@@ -46,7 +50,7 @@ def _record_until_silence(should_abort=None):
 def recognize_speech_from_microphone(should_abort=None):
     recognizer = sr.Recognizer()
 
-    print("Listening...")
+    logger.info("Listening...")
     raw_audio = _record_until_silence(should_abort=should_abort)
     if raw_audio is None:
         return None
@@ -54,11 +58,11 @@ def recognize_speech_from_microphone(should_abort=None):
 
     try:
         text = recognizer.recognize_google(audio)
-        print(f"Recognized: {text}")
+        logger.info("Recognized: %s", text)
         return text
     except sr.UnknownValueError:
-        print("Google Speech Recognition could not understand audio")
+        logger.info("Google Speech Recognition could not understand audio")
         return None
     except sr.RequestError as e:
-        print(f"Could not request results from Google Speech Recognition service; {e}")
+        logger.error("Could not request results from Google Speech Recognition service: %s", e)
         return None

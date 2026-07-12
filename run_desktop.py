@@ -8,10 +8,16 @@ from desktop.app import build_window
 from desktop.single_instance import acquire_lock_or_notify_existing, serve_focus_requests
 from desktop.tray import ZhoraTray
 from modules.engine import engine
+from modules.logging_setup import setup_logging
 from modules.shared_state import engine_state
 
 
 def main():
+    # First thing, full stop: the autostart shortcut launches this via
+    # pythonw.exe (no console), so print()/tracebacks have nowhere to go
+    # unless this is in place before anything else can fail.
+    setup_logging()
+
     # Claimed first, before any of the slow startup work below (WebView2
     # init alone takes seconds) - otherwise two near-simultaneous launches
     # can both pass this check before either one binds the lock.
@@ -55,9 +61,15 @@ def main():
             # window.destroy(), and destroying a window from inside its own
             # closing-event handler is asking for trouble. Returning True
             # lets pywebview's native close finish the job instead; we just
-            # need to stop the engine/tray icon first.
+            # need to stop the engine/tray icon first. Signaled in the
+            # background rather than awaited here - engine.stop() can block
+            # for its full join(timeout=5) if the engine thread is stuck in
+            # an uninterruptible call (an in-flight LLM response), and this
+            # runs on the window's own closing-event thread, so waiting on
+            # it here would freeze the window for that whole stretch. The
+            # engine thread is a daemon, so it's safe to just signal it.
             quitting.set()
-            engine.stop()
+            threading.Thread(target=engine.stop, daemon=True).start()
             tray.icon.stop()
             return True
 
@@ -69,7 +81,20 @@ def main():
         # its buttons call Api.resolve_close_choice, which does the actual
         # hide-or-quit and persists the choice if "remember" was checked.
         # Cancel this native close for now; the modal decides what happens.
-        window.evaluate_js("window.showCloseConfirm()")
+        #
+        # evaluate_js() must NOT be called directly here: it blocks on a
+        # semaphore that's only released by a WebView2 callback scheduled via
+        # TaskScheduler.FromCurrentSynchronizationContext() - which needs
+        # this same UI thread's message loop to be pumping to ever fire.
+        # Since on_closing() runs synchronously inside FormClosing (on the UI
+        # thread), calling evaluate_js() here blocks that thread waiting on a
+        # callback only that same blocked thread could deliver - a permanent
+        # deadlock, reproduced live: the window goes fully unresponsive
+        # (confirmed via SendMessageTimeout/SMTO_ABORTIFHUNG) the instant the
+        # native X is clicked with CLOSE_BEHAVIOR=ask. Backgrounding the call
+        # lets FormClosing return first, so the UI thread is free to pump the
+        # continuation by the time evaluate_js's Invoke reaches it.
+        threading.Thread(target=window.evaluate_js, args=("window.showCloseConfirm()",), daemon=True).start()
         return False
 
     window.events.closing += on_closing

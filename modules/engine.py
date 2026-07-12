@@ -1,15 +1,19 @@
+import logging
 import queue
 import threading
 
 from config import get_auto_speak_responses
 from models.create_model_instance import create_wakeword_model
 from modules import storage
+from modules.audio_feedback import play_wake_ack
 from modules.command_processing import process_command
 from modules.google_recog import recognize_speech_from_microphone
-from modules.model_interaction import stream_response_from_model
+from modules.model_interaction import force_remember_if_triggered, stream_response_from_model
 from modules.shared_state import engine_state
 from modules.text_to_speech import speak_text
 from modules.trigger_word_detection import listen_for_trigger_word
+
+logger = logging.getLogger(__name__)
 
 
 class ZhoraEngine:
@@ -72,6 +76,7 @@ class ZhoraEngine:
             wakeword_model = create_wakeword_model()
         except Exception as e:
             wakeword_error = str(e)
+            logger.exception("Failed to load wake-word model")
 
         while not self._stop_event.is_set():
             try:
@@ -98,9 +103,13 @@ class ZhoraEngine:
             if not detected:
                 continue  # interrupted by a typed prompt, or a transient error
 
+            logger.info("Wake word detected")
+            play_wake_ack()
             self.state.set_status("listening_for_command")
             self._cancel_voice_event.clear()
-            command = recognize_speech_from_microphone(should_abort=self._cancel_voice_event.is_set)
+            command = recognize_speech_from_microphone(
+                should_abort=lambda: self._stop_event.is_set() or self._cancel_voice_event.is_set()
+            )
             if self._cancel_voice_event.is_set():
                 continue  # user started typing mid-recording; the typed prompt is already queued
             if command:
@@ -112,6 +121,10 @@ class ZhoraEngine:
         self._ensure_active_chat()
         chat_id = chat_id or self._active_chat_id
         mode = storage.get_chat_mode(chat_id)
+        new_title = storage.maybe_autotitle_chat(chat_id, text)
+        if new_title is not None:
+            self.state.set_status("chat_renamed", {"chat_id": chat_id, "title": new_title})
+        force_remember_if_triggered(text)
         self.state.set_status("thinking")
         processed = process_command(text)
 
@@ -140,6 +153,7 @@ class ZhoraEngine:
                 elif kind == "done":
                     response, tool_calls, run_id = payload
         except Exception as e:
+            logger.exception("Model response streaming failed")
             self.state.set_status("error", str(e))
             return
 
@@ -156,12 +170,19 @@ class ZhoraEngine:
             # the turn is done once the text is ready, speech just plays
             # alongside it (same as the existing interrupt-on-type behavior,
             # which already treats speech as freely interruptible).
-            threading.Thread(
-                target=speak_text,
-                args=(response,),
-                kwargs={"should_abort": self._cancel_voice_event.is_set},
-                daemon=True,
-            ).start()
+            #
+            # Wrapped in its own try/except (rather than left to the global
+            # threading.excepthook safety net) so a TTS failure logs with
+            # actual context and shows up as a clearly-labeled chat bubble,
+            # not just "Thread-7: <error>".
+            def _speak_and_report():
+                try:
+                    speak_text(response, should_abort=self._cancel_voice_event.is_set)
+                except Exception as e:
+                    logger.exception("Text-to-speech failed")
+                    self.state.set_status("error", f"Text-to-speech failed: {e}")
+
+            threading.Thread(target=_speak_and_report, daemon=True).start()
 
         self.state.set_status("idle", {"chat_id": chat_id, "response": response, "run_id": run_id})
 

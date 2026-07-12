@@ -37,3 +37,21 @@ def get_auto_speak_responses():
 def get_close_behavior():
     value = os.getenv("CLOSE_BEHAVIOR", "ask").lower()
     return value if value in ("ask", "tray", "quit") else "ask"
+
+
+# Voice/rate/volume overrides for TTS. Unset (None) means "use whatever
+# pyttsx3/SAPI5 already defaults to" rather than baking in a guessed value -
+# the actual default depends on which voices are installed on this Windows
+# install, so text_to_speech.py reads it straight from the engine itself.
+def get_voice_id():
+    return os.getenv("VOICE_ID") or None
+
+
+def get_voice_rate():
+    value = os.getenv("VOICE_RATE")
+    return int(value) if value else None
+
+
+def get_voice_volume():
+    value = os.getenv("VOICE_VOLUME")
+    return float(value) if value else None

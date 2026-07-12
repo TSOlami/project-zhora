@@ -1,3 +1,4 @@
+import logging
 import threading
 
 import pystray
@@ -6,6 +7,8 @@ from PIL import Image, ImageDraw
 from desktop.shortcut import create_desktop_shortcut
 from modules.engine import engine
 from modules.shared_state import engine_state
+
+logger = logging.getLogger(__name__)
 
 # Mirrors the voice orb in the chat window (see #voice-orb rules in
 # style.css) - neutral gray for passive/at-rest states, the one accent blue
@@ -72,11 +75,19 @@ class ZhoraTray:
     def _add_to_desktop(self, icon=None, item=None):
         try:
             create_desktop_shortcut()
-        except Exception as e:
-            print(f"Failed to create desktop shortcut: {e}")
+        except Exception:
+            logger.exception("Failed to create desktop shortcut")
 
     def _quit(self, icon=None, item=None):
-        engine.stop()
+        # engine.stop() can block for its full join(timeout=5) if the engine
+        # thread is stuck in an uninterruptible call (an in-flight LLM
+        # response, or - previously - voice recognition; see engine.py). Its
+        # own thread is what's driving this tray icon and, on the win32
+        # backend, the icon's message loop - blocking here freezes the tray
+        # (and can make the whole app look hung) for the entire wait. The
+        # engine thread is a daemon, so it's safe to just signal it and move
+        # on with teardown instead of waiting for it to actually finish.
+        threading.Thread(target=engine.stop, daemon=True).start()
         self.icon.stop()
         self._on_quit()
 

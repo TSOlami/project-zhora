@@ -22,6 +22,8 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
   wrench:
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>',
+  trash:
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
 };
 
 // --- Custom select widget -------------------------------------------------
@@ -492,6 +494,52 @@ function addMessageRow(role, content, toolNames, runId, options) {
   return { row, bubble, wrap };
 }
 
+function enterRenameMode(item, titleSpan, actions, chat) {
+  actions.classList.add("hidden");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "chat-rename-input";
+  input.value = chat.title;
+  titleSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const commit = async () => {
+    if (settled) return;
+    settled = true;
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== chat.title) {
+      await api.rename_chat(chat.id, newTitle);
+    }
+    await loadChatList();
+  };
+  const cancel = () => {
+    if (settled) return;
+    settled = true;
+    input.replaceWith(titleSpan);
+    actions.classList.remove("hidden");
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      settled = true;
+      input.replaceWith(titleSpan);
+      actions.classList.remove("hidden");
+    }
+  });
+}
+
+async function deleteChatWithConfirm(chat) {
+  if (!confirm(`Delete "${chat.title}"? This can't be undone.`)) return;
+  await api.delete_chat(chat.id);
+  if (chat.id === activeChatId) {
+    activeChatId = null;
+  }
+  await loadChatList();
+}
+
 async function loadChatList() {
   const chats = await api.list_chats();
   chatListEl.innerHTML = "";
@@ -502,8 +550,37 @@ async function loadChatList() {
   chats.forEach((chat) => {
     const item = document.createElement("div");
     item.className = "chat-item" + (chat.id === activeChatId ? " active" : "");
-    item.textContent = chat.title;
-    item.onclick = () => switchChat(chat.id);
+
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "chat-item-title";
+    titleSpan.textContent = chat.title;
+    titleSpan.onclick = () => switchChat(chat.id);
+
+    const actions = document.createElement("div");
+    actions.className = "chat-item-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "chat-item-action-btn";
+    renameBtn.title = "Rename";
+    renameBtn.innerHTML = ICONS.edit;
+    renameBtn.onclick = (e) => {
+      e.stopPropagation();
+      enterRenameMode(item, titleSpan, actions, chat);
+    };
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "chat-item-action-btn";
+    deleteBtn.title = "Delete";
+    deleteBtn.innerHTML = ICONS.trash;
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteChatWithConfirm(chat);
+    };
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+    item.appendChild(titleSpan);
+    item.appendChild(actions);
     chatListEl.appendChild(item);
   });
   if (!activeChatId) {
@@ -617,6 +694,30 @@ document.getElementById("settings-btn").onclick = async () => {
   document.getElementById("close-behavior-select").value = settings.close_behavior;
   closeBehaviorWidget.refresh();
   document.getElementById("start-on-boot").checked = settings.start_on_boot;
+
+  const voices = await api.list_voices();
+  const voiceSelect = document.getElementById("voice-select");
+  voiceSelect.innerHTML = "";
+  voices.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.textContent = v.name;
+    if (v.id === (settings.voice_id || settings.voice_engine_defaults.voice_id)) opt.selected = true;
+    voiceSelect.appendChild(opt);
+  });
+
+  const rateInput = document.getElementById("voice-rate");
+  const rateValue = document.getElementById("voice-rate-value");
+  rateInput.value = settings.voice_rate ?? settings.voice_engine_defaults.rate;
+  rateValue.textContent = rateInput.value;
+  rateInput.oninput = () => (rateValue.textContent = rateInput.value);
+
+  const volumeInput = document.getElementById("voice-volume");
+  const volumeValue = document.getElementById("voice-volume-value");
+  volumeInput.value = settings.voice_volume ?? settings.voice_engine_defaults.volume;
+  volumeValue.textContent = volumeInput.value;
+  volumeInput.oninput = () => (volumeValue.textContent = volumeInput.value);
+
   settingsModal.classList.remove("hidden");
 };
 document.getElementById("settings-close").onclick = () => settingsModal.classList.add("hidden");
@@ -626,16 +727,28 @@ document.getElementById("settings-save").onclick = async () => {
   const autoSpeak = document.getElementById("auto-speak").checked;
   const closeBehavior = document.getElementById("close-behavior-select").value;
   const startOnBoot = document.getElementById("start-on-boot").checked;
+  const voiceId = document.getElementById("voice-select").value;
+  const voiceRate = document.getElementById("voice-rate").value;
+  const voiceVolume = document.getElementById("voice-volume").value;
   await api.set_current_model(model);
   await api.set_setting("WAKE_WORD_MODEL_PATH", wakeWordPath);
   await api.set_setting("AUTO_SPEAK_RESPONSES", autoSpeak ? "true" : "false");
   await api.set_setting("CLOSE_BEHAVIOR", closeBehavior);
+  await api.set_setting("VOICE_ID", voiceId);
+  await api.set_setting("VOICE_RATE", voiceRate);
+  await api.set_setting("VOICE_VOLUME", voiceVolume);
   await api.set_start_on_boot(startOnBoot);
   settingsModal.classList.add("hidden");
 };
 document.getElementById("wake-word-browse").onclick = async () => {
   const path = await api.browse_wake_word_model();
   if (path) document.getElementById("wake-word-path").value = path;
+};
+document.getElementById("voice-preview-btn").onclick = () => {
+  const voiceId = document.getElementById("voice-select").value;
+  const voiceRate = document.getElementById("voice-rate").value;
+  const voiceVolume = document.getElementById("voice-volume").value;
+  api.preview_voice(voiceId, voiceRate, voiceVolume);
 };
 
 // --- Close-window confirmation ---
@@ -728,6 +841,62 @@ document.getElementById("mcp-add-btn").onclick = async () => {
   await refreshToolsList();
 };
 
+// --- Memory modal ---
+const memoryModal = document.getElementById("memory-modal");
+
+async function refreshMemoryList() {
+  const memories = await api.list_memories();
+  const list = document.getElementById("memory-list");
+  list.innerHTML = "";
+  if (memories.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "memory-empty";
+    empty.textContent = "Nothing remembered yet.";
+    list.appendChild(empty);
+    return;
+  }
+  memories.forEach((mem) => {
+    const row = document.createElement("div");
+    row.className = "memory-item";
+
+    const info = document.createElement("div");
+    const textDiv = document.createElement("div");
+    textDiv.className = "memory-text";
+    textDiv.textContent = mem.memory;
+    info.appendChild(textDiv);
+    if (mem.topics && mem.topics.length) {
+      const topicsDiv = document.createElement("div");
+      topicsDiv.className = "memory-topics";
+      topicsDiv.textContent = mem.topics.join(", ");
+      info.appendChild(topicsDiv);
+    }
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "mcp-remove";
+    removeBtn.title = "Forget this";
+    removeBtn.innerHTML = ICONS.close;
+    removeBtn.onclick = async () => {
+      await api.delete_memory(mem.id);
+      refreshMemoryList();
+    };
+
+    row.appendChild(info);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("memory-btn").onclick = async () => {
+  await refreshMemoryList();
+  memoryModal.classList.remove("hidden");
+};
+document.getElementById("memory-close").onclick = () => memoryModal.classList.add("hidden");
+document.getElementById("memory-clear-all").onclick = async () => {
+  if (!confirm("Forget everything Zhora remembers about you? This can't be undone.")) return;
+  await api.clear_memories();
+  await refreshMemoryList();
+};
+
 // --- Canvas panel ---
 const canvasPanel = document.getElementById("canvas-panel");
 const canvasCode = document.getElementById("canvas-code");
@@ -794,6 +963,10 @@ window.onZhoraEvent = (event) => {
 
   if (event.status === "thinking") {
     setGenerating(true);
+  }
+
+  if (event.status === "chat_renamed" && event.detail) {
+    loadChatList();
   }
 
   if (event.status === "awaiting_confirmation" && event.detail) {

@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import os
 import threading
 
 from agno.tools.mcp import MCPTools
 
 from config import DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 MCP_CONFIG_PATH = os.path.join(DATA_DIR, "mcp_servers.json")
 
@@ -101,13 +104,14 @@ def build_enabled_mcp_toolkits():
                 # timeout_seconds above - otherwise this outer wait cuts the
                 # connection off before the more generous internal one applies.
                 _run_coro(toolkit.connect(), timeout=60)
-            except Exception as e:
-                print(f"Failed to connect MCP server '{server_id}': {e}")
+            except Exception:
+                logger.exception("Failed to connect MCP server '%s'", server_id)
                 continue
             if not toolkit.initialized or not toolkit.functions:
-                print(
-                    f"MCP server '{server_id}' did not initialize correctly "
-                    "(no error raised, but no tools were discovered) - skipping."
+                logger.warning(
+                    "MCP server '%s' did not initialize correctly "
+                    "(no error raised, but no tools were discovered) - skipping.",
+                    server_id,
                 )
                 try:
                     _run_coro(toolkit.close())

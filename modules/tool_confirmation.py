@@ -1,6 +1,9 @@
+import logging
 import threading
 
 from modules.shared_state import engine_state
+
+logger = logging.getLogger(__name__)
 
 CONFIRMATION_TIMEOUT_SECONDS = 20
 
@@ -40,6 +43,7 @@ def request_confirmation(function_name, arguments):
     unless this returns "approve".
     """
     req = engine_state.begin_confirmation(function_name, arguments)
+    logger.info("Confirmation required: tool '%s' with arguments: %s", function_name, arguments)
 
     print(f"\n[Confirmation required] Run tool '{function_name}' with arguments: {arguments}")
     print("Say 'yes'/'no', click Approve/Deny in the app, or type y/N here.")
@@ -51,6 +55,8 @@ def request_confirmation(function_name, arguments):
     engine_state.end_confirmation()
 
     if result != "approve":
+        logger.info("Blocked tool call: %s (result=%s)", function_name, result)
         print(f"Blocked tool call: {function_name}")
         return "deny"
+    logger.info("Approved tool call: %s", function_name)
     return "approve"
