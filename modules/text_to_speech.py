@@ -1,3 +1,4 @@
+import logging
 import queue
 import threading
 
@@ -5,33 +6,85 @@ import pyttsx3
 
 from config import get_voice_id, get_voice_rate, get_voice_volume
 
-# pyttsx3's SAPI5 engine is a COM object whose "finished speaking" event is
-# only ever delivered to the specific OS thread that created it (COM
-# apartment affinity) - the previous design created it lazily on whichever
-# ad-hoc per-call thread got there first, then reused it from later ad-hoc
-# threads. Once the creating thread exited (as every fire-and-forget
-# threading.Thread(target=speak_text, ...) caller's thread does), any later
-# call's runAndWait() could end up waiting forever for an event with nowhere
-# to land - a silent, permanent hang with no error. Racing two such threads
-# to create the engine for the first time could also crash outright with
-# "CoInitialize has not been called".
+logger = logging.getLogger(__name__)
+
+# Generous upper bound on a single job (mainly speak_text()'s _speak()) - a
+# well-behaved call finishes quickly after being superseded/interrupted, or
+# naturally once the utterance ends. This exists purely as a safety net for
+# the rare case where SAPI's engine.stop() races with the utterance's own
+# natural completion and runAndWait() never returns (observed in practice:
+# clicking a second message's speak button while an earlier one is still
+# playing can occasionally wedge it) - set well above the longest plausible
+# uninterrupted response read aloud, so real speech is never cut short.
+_JOB_TIMEOUT_SECONDS = 90
+
+# pyttsx3's SAPI5 engine is a COM object whose events (including the
+# "finished speaking" one that runAndWait() blocks on) are only ever
+# delivered back to the specific OS thread that created the engine (COM
+# apartment affinity) - creating it on one thread and then driving it
+# (say()/runAndWait()) from another, even a second later, silently breaks
+# event delivery: runAndWait() never returns, because the completion event
+# has nowhere to land. (Confirmed directly: driving a cross-thread-created
+# engine gets the *first* event and then nothing - not even a delayed one.)
+# The previous design created the engine lazily on whichever ad-hoc per-call
+# thread got there first, then reused it from later ad-hoc threads, hitting
+# exactly this. A later design fixed the "which thread creates it" half by
+# using one permanent thread for that - but then still ran each job on a
+# *fresh, throwaway* inner thread, which broke the exact same affinity one
+# level down: clicking a second "speak" button while an earlier one was
+# still playing would supersede and stop the first (audibly), but the
+# second would then never actually play, because the first job's
+# runAndWait() - now driven from a throwaway thread instead of the engine's
+# creating thread - never returned to free up the worker for the next job.
 #
-# A single, permanent worker thread sidesteps both: it creates the engine
-# once and is the only thread that ever touches it, for the life of the
-# process, so the owning apartment never goes away.
+# The fix: the engine must be created *and* driven for its entire life by
+# the same single, permanent thread. That thread (_driver) does nothing but
+# create the engine once and then run jobs handed to it one at a time,
+# forever. A second, outer thread (_worker) exists purely to enforce the
+# wedge timeout below without itself ever touching the engine: if a job
+# doesn't finish in time, _worker gives up waiting and abandons both the
+# driver thread and the engine (rather than trying to interrupt a COM call
+# stuck on another thread), and the next speak_text() call spins up a fresh
+# pair from scratch.
 _jobs = queue.Queue()
 _worker_started = threading.Event()
 _worker_start_lock = threading.Lock()  # guards the check-then-spawn below
-_engine = None  # only ever read/written from _worker's thread
+_engine = None  # only ever read/written from _driver's thread
 
 
 def _worker():
     global _engine
-    _engine = pyttsx3.init()
+    engine_ready = threading.Event()
+    driver_jobs = queue.Queue()
+
+    def _driver():
+        global _engine
+        _engine = pyttsx3.init()
+        engine_ready.set()
+        while True:
+            job, finished = driver_jobs.get()
+            try:
+                job()
+            finally:
+                finished.set()
+
+    # Daemon, permanent for this engine generation: created once here and
+    # never replaced except by abandoning it wholesale below.
+    threading.Thread(target=_driver, daemon=True).start()
+    engine_ready.wait()
     _worker_started.set()
     while True:
         job = _jobs.get()
-        job()
+        finished = threading.Event()
+        driver_jobs.put((job, finished))
+        if not finished.wait(timeout=_JOB_TIMEOUT_SECONDS):
+            logger.error(
+                "TTS engine appears wedged (a job didn't finish within %ss) - "
+                "rebuilding it so future speech isn't silently dead until restart",
+                _JOB_TIMEOUT_SECONDS,
+            )
+            _worker_started.clear()
+            return  # abandons the stuck driver thread/engine; _ensure_worker() spins up a fresh pair next call
 
 
 def _ensure_worker():

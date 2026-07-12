@@ -13,9 +13,9 @@ from modules import storage, tool_registry
 from modules.audio_feedback import play_wake_ack
 from modules.engine import engine
 from modules.env_file import set_env_value
-from modules.google_recog import recognize_speech_from_microphone
 from modules.model_interaction import get_current_model, set_current_model
 from modules.shared_state import engine_state
+from modules.speech_to_text import recognize_speech_from_microphone
 from modules.text_to_speech import speak_text
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ class Api:
     def _capture_voice_input(self, chat_id):
         play_wake_ack()
         engine_state.set_status("listening_for_command")
-        command = recognize_speech_from_microphone()
+        command = recognize_speech_from_microphone(on_partial=engine_state.push_partial_transcript)
         if command:
             engine.set_active_chat(chat_id)
             engine.submit_prompt(command, chat_id=chat_id, source="voice")

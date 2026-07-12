@@ -7,9 +7,9 @@ from models.create_model_instance import create_wakeword_model
 from modules import storage
 from modules.audio_feedback import play_wake_ack
 from modules.command_processing import process_command
-from modules.google_recog import recognize_speech_from_microphone
 from modules.model_interaction import force_remember_if_triggered, stream_response_from_model
 from modules.shared_state import engine_state
+from modules.speech_to_text import recognize_speech_from_microphone
 from modules.text_to_speech import speak_text
 from modules.trigger_word_detection import listen_for_trigger_word
 
@@ -108,7 +108,8 @@ class ZhoraEngine:
             self.state.set_status("listening_for_command")
             self._cancel_voice_event.clear()
             command = recognize_speech_from_microphone(
-                should_abort=lambda: self._stop_event.is_set() or self._cancel_voice_event.is_set()
+                should_abort=lambda: self._stop_event.is_set() or self._cancel_voice_event.is_set(),
+                on_partial=self.state.push_partial_transcript,
             )
             if self._cancel_voice_event.is_set():
                 continue  # user started typing mid-recording; the typed prompt is already queued

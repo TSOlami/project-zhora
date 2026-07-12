@@ -1,11 +1,12 @@
 # Zhora - Voice-Activated AI Assistant
 
-Zhora is a personal, local-first AI assistant that listens for a wake word, understands your spoken commands, and responds using a local AI language model via Ollama — no cloud LLM, no account walls.
+Zhora is a personal, local-first AI assistant that listens for a wake word, understands your spoken commands, and responds using a local AI language model via Ollama — no cloud LLM, no account walls. The full pipeline (wake word, speech-to-text, LLM, text-to-speech) runs fully offline by default.
 
 ## What Zhora Can Do
 
 - Listen for the wake word "Hey Zhora" (custom-trained openWakeWord model) to activate
-- Convert your spoken commands to text using Google's speech recognition
+- Convert your spoken commands to text, fully offline by default (Vosk) - or via Google's
+  cloud speech recognition if you opt into that instead
 - Process your commands
 - Generate intelligent, unrestricted responses using a local AI model
 - Take actions via tools (web search, calculator, more can be added) using the Agno agent framework
@@ -18,7 +19,8 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
 - **Python**: Main programming language
 - **openWakeWord**: Free, local, account-free wake word detection
 - **sounddevice**: Audio input processing
-- **SpeechRecognition**: Converting speech to text using Google's service
+- **Vosk**: Free, local, offline speech-to-text (default engine)
+- **SpeechRecognition**: Speech-to-text abstraction; also wraps the optional Google cloud backend
 - **Ollama**: Running local AI models
 - **Llama 3**: AI language model (default: `taozhiyuai/llama-3-8b-lexi-uncensored:f16`, configurable)
 - **Agno**: Agent framework providing the tool-calling library (web search, calculator, and more installable toolkits) — successor to Phidata
@@ -33,7 +35,9 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
   - **engine.py**: Controllable background service (start/stop/restart) wrapping
     the wake-word -> STT -> LLM -> TTS loop; also accepts typed prompts directly
   - **trigger_word_detection.py**: Listens for the wake word
-  - **google_recog.py**: Handles speech recognition
+  - **speech_to_text/**: Speech recognition behind a pluggable backend
+    (`base.py` documents the interface; `backends/` holds `vosk_backend.py`
+    (default, offline) and `google_backend.py` (opt-in via `STT_ENGINE=google`))
   - **command_processing.py**: Processes recognized commands
   - **model_interaction.py**: Interacts with the AI model via Ollama/Agno, with
     persistent per-chat memory
@@ -52,16 +56,20 @@ Zhora is a personal, local-first AI assistant that listens for a wake word, unde
 
 ## Required External Services/Software
 
-- Internet connection (for Google Speech Recognition)
 - Ollama installed locally (for running the Llama 3 model)
+- A downloaded Vosk model for offline speech-to-text (see Setup below) - or,
+  if you set `STT_ENGINE=google` instead, an internet connection and no
+  model download
 
-No account or API key is required for wake word detection.
+No account or API key is required for wake word detection, or for the default
+(Vosk) speech-to-text backend.
 
 ## How It Works
 
 1. The system continuously listens for the wake word
 2. When detected, it starts recording your command
-3. Your spoken command is converted to text using Google's speech recognition
+3. Your spoken command is converted to text locally via Vosk (or Google's cloud
+   speech recognition, if you opted into `STT_ENGINE=google`)
 4. The text is processed and sent to the local Llama 3 model running on Ollama
 5. The AI model generates a response, which is printed and spoken aloud
 
@@ -90,14 +98,22 @@ No account or API key is required for wake word detection.
    - Export the resulting `.onnx` model file into `models/wakeword/`
    - Set `WAKE_WORD_MODEL_PATH` in `.env` to point to that file
 
-6. Install Ollama:
+6. Download the offline speech-to-text model (skip this only if you're using
+   `STT_ENGINE=google` instead):
+   - Download `vosk-model-small-en-us-0.15.zip` from
+     [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models)
+   - Unzip it so you end up with `data/models/vosk-model-small-en-us-0.15/`
+     (containing `am/`, `conf/`, `graph/`, etc. directly inside it) - or set
+     `VOSK_MODEL_PATH` in `.env` if you put it somewhere else
+
+7. Install Ollama:
    - Follow instructions at https://ollama.ai/ to install Ollama
    - Pull the model set in `.env` (default shown below):
      ```
      ollama pull taozhiyuai/llama-3-8b-lexi-uncensored:f16
      ```
 
-7. Run the application - either the plain CLI:
+8. Run the application - either the plain CLI:
    ```
    python main.py
    ```
@@ -106,7 +122,7 @@ No account or API key is required for wake word detection.
    python run_desktop.py
    ```
 
-8. Say the wake word followed by your command, or type into the chat window
+9. Say the wake word followed by your command, or type into the chat window
 
 ## Switching Models
 
@@ -120,6 +136,22 @@ Not every Ollama model has a chat template that supports tool calling. If tool u
 silently doesn't trigger, check that your pulled model's Modelfile supports Ollama's
 tools API (most mainstream instruct models like Llama 3.1+, Qwen2.5, and Mistral do;
 some community uncensored fine-tunes may not).
+
+## Switching Speech-to-Text Engines
+
+`STT_ENGINE` in `.env` picks the backend, no code edits needed:
+
+- `vosk` (default) - fully offline, runs on-device. Needs the model download from
+  Setup step 6. Swap in a different/larger Vosk model (more accurate, bigger
+  download) by pointing `VOSK_MODEL_PATH` at it instead.
+- `google` - Google's free Web Speech API. More accurate than the small Vosk
+  model, but needs an internet connection and sends audio off-device.
+
+Adding another backend (a different offline engine, a different cloud API) means
+adding one module under `modules/speech_to_text/backends/` exposing a
+`recognize(audio_bytes, sample_rate)` function (see `base.py`), then one line in
+`modules/speech_to_text/recognizer.py`'s `_BACKEND_MODULES` - nothing else in the
+app touches backends directly.
 
 ## Tools, Plugins, PC Control, and MCP
 

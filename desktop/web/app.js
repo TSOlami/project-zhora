@@ -242,6 +242,7 @@ const statusText = document.getElementById("status-text");
 const modeSelectWidget = enhanceSelect(document.getElementById("mode-select"), { variant: "topbar" });
 const closeBehaviorWidget = enhanceSelect(document.getElementById("close-behavior-select"));
 const modelSelectWidget = enhanceSelect(document.getElementById("model-select"));
+const voiceSelectWidget = enhanceSelect(document.getElementById("voice-select"));
 
 // Per-mode input placeholder + whether Code mode keeps Canvas open
 // proactively, instead of only opening it once a code block actually shows
@@ -266,6 +267,12 @@ function applyModeUI(mode) {
 // letting a second click race the first (see MIC_READY_STATUSES usage below).
 const MIC_READY_STATUSES = new Set(["idle", "listening_for_wake_word", "voice_unavailable", "stopped"]);
 
+// Whether the input box is currently showing a live "as you speak" caption
+// rather than actually-typed text - lets partial_transcript events know
+// whether it's still safe to overwrite inputBox.value, and lets setStatus
+// know whether to clean the caption up when listening ends.
+let listeningPreviewActive = false;
+
 function setStatus(status) {
   voiceOrb.className = status;
   statusText.textContent = status.replace(/_/g, " ");
@@ -273,6 +280,24 @@ function setStatus(status) {
   if (!generating) {
     micBtn.disabled = !MIC_READY_STATUSES.has(status);
   }
+
+  if (status === "listening_for_command") {
+    listeningPreviewActive = true;
+    inputBox.value = "";
+    inputBox.classList.add("listening-preview");
+  } else if (listeningPreviewActive) {
+    listeningPreviewActive = false;
+    inputBox.value = "";
+    inputBox.classList.remove("listening-preview");
+  }
+}
+
+function setPartialTranscript(text) {
+  // Only backends with SUPPORTS_STREAMING (see speech_to_text/base.py) ever
+  // send these - others just produce the final text once listening stops, so
+  // this simply never fires for them and the input box stays empty until then.
+  if (!listeningPreviewActive) return;
+  inputBox.value = text;
 }
 
 function setAmplitude(value) {
@@ -705,6 +730,7 @@ document.getElementById("settings-btn").onclick = async () => {
     if (v.id === (settings.voice_id || settings.voice_engine_defaults.voice_id)) opt.selected = true;
     voiceSelect.appendChild(opt);
   });
+  voiceSelectWidget.refresh();
 
   const rateInput = document.getElementById("voice-rate");
   const rateValue = document.getElementById("voice-rate-value");
@@ -956,6 +982,11 @@ document.getElementById("canvas-copy").onclick = () => navigator.clipboard.write
 window.onZhoraEvent = (event) => {
   if (event.status === "amplitude") {
     setAmplitude(event.detail.value);
+    return;
+  }
+
+  if (event.status === "partial_transcript") {
+    setPartialTranscript(event.detail.text);
     return;
   }
 

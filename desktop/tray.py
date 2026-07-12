@@ -11,23 +11,23 @@ from modules.shared_state import engine_state
 logger = logging.getLogger(__name__)
 
 # Mirrors the voice orb in the chat window (see #voice-orb rules in
-# style.css) - neutral gray for passive/at-rest states, the one accent blue
-# for "actively working on something," the one danger red for error/needs-
-# your-attention. Not one color per state; color only answers "should I
-# look at this," same reasoning as the in-app orb.
+# style.css) - fully monochrome except the one danger red for error/needs-
+# your-attention. "Actively working" is a brighter neutral, not a hue -
+# lightness carries the distinction the way it does in the CSS. Not one
+# color per state; color only answers "should I look at this."
 _NEUTRAL = (107, 109, 116)
-_ACCENT = (47, 111, 235)
+_ACTIVE = (232, 232, 234)
 _DANGER = (208, 65, 63)
 _STATUS_COLORS = {
     "idle": _NEUTRAL,
     "listening_for_wake_word": _NEUTRAL,
     "voice_unavailable": _NEUTRAL,
     "stopped": _NEUTRAL,
-    "listening_for_command": _ACCENT,
-    "thinking": _ACCENT,
-    "responding": _ACCENT,
-    "streaming_chunk": _ACCENT,
-    "speaking": _ACCENT,
+    "listening_for_command": _ACTIVE,
+    "thinking": _ACTIVE,
+    "responding": _ACTIVE,
+    "streaming_chunk": _ACTIVE,
+    "speaking": _ACTIVE,
     "awaiting_confirmation": _DANGER,
     "error": _DANGER,
 }
@@ -38,7 +38,13 @@ def _make_icon_image(color):
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     draw.ellipse((4, 4, size - 4, size - 4), fill=color)
-    draw.text((20, 16), "Z", fill=(255, 255, 255))
+    # Text color has to follow the background's lightness now that _ACTIVE is
+    # a bright near-white instead of blue - white-on-white would be
+    # unreadable. Perceptual luminance, not a flat midpoint split.
+    r, g, b = color[:3]
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    text_color = (20, 21, 23) if luminance > 140 else (255, 255, 255)
+    draw.text((20, 16), "Z", fill=text_color)
     return image
 
 

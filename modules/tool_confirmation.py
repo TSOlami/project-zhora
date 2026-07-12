@@ -9,7 +9,7 @@ CONFIRMATION_TIMEOUT_SECONDS = 20
 
 
 def _listen_for_voice_confirmation(req):
-    from modules.google_recog import recognize_speech_from_microphone
+    from modules.speech_to_text import recognize_speech_from_microphone
 
     text = recognize_speech_from_microphone()
     if req.event.is_set() or not text:

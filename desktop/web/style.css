@@ -2,6 +2,29 @@
   box-sizing: border-box;
 }
 
+/* One scrollbar look everywhere (chat list, messages, modals, canvas,
+   custom-select popups, memory list) - WebView2 is Chromium under the hood,
+   so ::-webkit-scrollbar reaches every scrollable element from one place
+   instead of the OS's default light scrollbar clashing with this dark theme
+   on some panels but not others. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #35363a;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #45464a;
+  background-clip: padding-box;
+}
+
 html, body {
   height: 100%;
   margin: 0;
@@ -119,44 +142,24 @@ html, body {
   border-color: #5a5b5e;
 }
 
-.sidebar-footer {
-  padding: 8px;
-  border-top: 1px solid #2a2b2e;
+#topbar-actions {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
-
-.sidebar-footer button {
-  padding: 8px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: #c7c7cc;
-  cursor: pointer;
-  font-size: 14px;
-}
-.sidebar-footer button:hover { background: #202124; }
-
-.icon-label-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.icon-label-btn svg { flex-shrink: 0; }
 
 .canvas-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #2f6feb;
-  flex-shrink: 0;
-  margin-left: auto;
+  background: #e8e8ea;
 }
 .canvas-dot.hidden { display: none; }
 
 .icon-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -172,11 +175,11 @@ html, body {
 }
 .icon-btn:hover { background: #202124; color: #e8e8ea; }
 .icon-btn.primary {
-  background: #2f6feb;
-  border-color: #2f6feb;
-  color: #fff;
+  background: #e8e8ea;
+  border-color: #e8e8ea;
+  color: #141517;
 }
-.icon-btn.primary:hover { background: #2a5fd0; }
+.icon-btn.primary:hover { background: #c7c7cc; }
 
 #main {
   flex: 1;
@@ -193,14 +196,13 @@ html, body {
   border-bottom: 1px solid #2a2b2e;
 }
 
-/* Status color is reserved for two kinds of "special case": actively
-   working on something (the one accent blue used everywhere else in the
-   app - not a new hue) and needs-attention/error (the one danger red).
-   Every passive/at-rest state - idle, listening for the wake word,
-   stopped, unavailable - stays neutral gray. The status TEXT next to the
-   orb already spells out which exact state it is; the orb's color only
-   needs to answer "should I look at this," not encode all nine states in
-   a different hue each. */
+/* Fully monochrome: color is reserved for exactly one real special case -
+   needs-attention/error (the one danger red). Everything else, including
+   "actively working," is neutral - passive/at-rest states are dim gray,
+   active states are bright gray/white. Lightness carries the distinction
+   instead of hue. The status TEXT next to the orb already spells out which
+   exact state it is; the orb's color only needs to answer "should I look
+   at this." */
 #voice-orb {
   width: 22px;
   height: 22px;
@@ -217,14 +219,14 @@ html, body {
 
 #voice-orb.listening_for_command,
 #voice-orb.responding,
-#voice-orb.streaming_chunk { background: #2f6feb; }
+#voice-orb.streaming_chunk { background: #e8e8ea; }
 #voice-orb.thinking {
-  background: #2f6feb;
-  animation: accent-pulse 1s ease-in-out infinite;
+  background: #e8e8ea;
+  animation: active-pulse 1s ease-in-out infinite;
 }
 #voice-orb.speaking {
-  background: #2f6feb;
-  animation: accent-pulse 0.6s ease-in-out infinite;
+  background: #e8e8ea;
+  animation: active-pulse 0.6s ease-in-out infinite;
 }
 
 #voice-orb.awaiting_confirmation {
@@ -233,9 +235,9 @@ html, body {
 }
 #voice-orb.error { background: #d0413f; }
 
-@keyframes accent-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 111, 235, 0.35); }
-  50% { box-shadow: 0 0 0 10px rgba(47, 111, 235, 0); }
+@keyframes active-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 232, 234, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(232, 232, 234, 0); }
 }
 @keyframes danger-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(208, 65, 63, 0.35); }
@@ -338,8 +340,8 @@ html, body {
   word-wrap: break-word;
 }
 .bubble.user {
-  background: #2f6feb;
-  color: #fff;
+  background: #e8e8ea;
+  color: #141517;
 }
 .bubble.assistant {
   background: #2a2b2e;
@@ -380,7 +382,7 @@ html, body {
   min-height: 60px;
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid #2f6feb;
+  border: 1px solid #9a9a9e;
   background: #202124;
   color: #e8e8ea;
   font-size: 14px;
@@ -403,9 +405,9 @@ html, body {
   font-size: 12px;
 }
 .edit-actions button.primary {
-  background: #2f6feb;
-  border-color: #2f6feb;
-  color: #fff;
+  background: #e8e8ea;
+  border-color: #e8e8ea;
+  color: #141517;
 }
 .edit-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -519,7 +521,16 @@ html, body {
   color: #e8e8ea;
   font-size: 14px;
 }
-#input-box:focus { outline: 1px solid #2f6feb; }
+#input-box:focus { outline: 1px solid #9a9a9e; }
+
+/* Live "as you speak" caption state - the input box is briefly showing the
+   STT backend's interim guess, not something the user typed, so it reads as
+   distinct (italic, dimmed) rather than looking like normal composed text
+   that's about to be sent verbatim. */
+#input-box.listening-preview {
+  font-style: italic;
+  color: #9a9a9e;
+}
 
 .modal {
   position: fixed;
@@ -533,12 +544,16 @@ html, body {
 .modal.hidden { display: none; }
 
 .modal-content {
+  display: flex;
+  flex-direction: column;
   background: #1e1f22;
   border: 1px solid #2a2b2e;
   border-radius: 12px;
   padding: 20px;
   width: 420px;
   max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 .modal-content h3 {
   margin-top: 0;
@@ -586,8 +601,8 @@ input[type="checkbox"].switch-checkbox::after {
   transition: transform 0.15s ease, background 0.15s ease;
 }
 input[type="checkbox"].switch-checkbox:checked {
-  background: #2f6feb;
-  border-color: #2f6feb;
+  background: #5a5c62;
+  border-color: #5a5c62;
 }
 input[type="checkbox"].switch-checkbox:checked::after {
   transform: translateX(16px);
@@ -595,7 +610,7 @@ input[type="checkbox"].switch-checkbox:checked::after {
 }
 input[type="checkbox"].switch-checkbox:hover { border-color: #4a4b4f; }
 input[type="checkbox"].switch-checkbox:focus-visible {
-  outline: 2px solid #2f6feb;
+  outline: 2px solid #9a9a9e;
   outline-offset: 2px;
 }
 input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -634,7 +649,7 @@ input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allo
 }
 .cselect-trigger:hover { border-color: #3a3b3f; }
 .cselect-trigger:focus-visible {
-  outline: 2px solid #2f6feb;
+  outline: 2px solid #9a9a9e;
   outline-offset: 1px;
 }
 .cselect-value {
@@ -689,7 +704,7 @@ input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allo
 .cselect-option[aria-selected="true"] { color: #fff; }
 .cselect-option[aria-selected="true"]::after {
   content: "✓";
-  color: #2f6feb;
+  color: #e8e8ea;
   font-size: 12px;
 }
 
@@ -747,11 +762,23 @@ input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allo
   font-size: 12px;
 }
 
+/* Sticky footer: on a modal tall enough to scroll (.modal-content itself is
+   the scroll container - see above), the action buttons stay reachable at
+   the bottom of the viewport instead of scrolling out of reach along with
+   the rest of the content. The negative side margins + matching padding
+   let it span edge-to-edge and sit flush against the modal's own bottom
+   padding/rounded corners rather than floating with a gap under it. */
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 16px;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: -20px;
+  margin: 16px -20px -20px;
+  padding: 12px 20px 20px;
+  background: #1e1f22;
+  border-top: 1px solid #2a2b2e;
 }
 .modal-actions button {
   padding: 8px 16px;
@@ -762,9 +789,9 @@ input[type="checkbox"].switch-checkbox:disabled { opacity: 0.5; cursor: not-allo
   cursor: pointer;
 }
 .modal-actions button.primary {
-  background: #2f6feb;
-  border-color: #2f6feb;
-  color: #fff;
+  background: #e8e8ea;
+  border-color: #e8e8ea;
+  color: #141517;
 }
 .modal-actions button.danger {
   background: #d0413f;

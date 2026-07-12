@@ -13,21 +13,6 @@
         <button id="new-chat-btn" title="New chat">+</button>
       </div>
       <div id="chat-list"></div>
-      <div class="sidebar-footer">
-        <button id="canvas-btn" class="icon-label-btn" title="Canvas: a side panel for code Zhora writes, pulled out of the chat for easier reading and copying. Opens automatically when a response includes a code block.">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-          <span>Canvas</span>
-          <span id="canvas-dot" class="canvas-dot hidden"></span>
-        </button>
-        <button id="tools-btn" class="icon-label-btn" title="Tools">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
-          <span>Tools</span>
-        </button>
-        <button id="memory-btn" class="icon-label-btn" title="Memory">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v1a3 3 0 0 0-2 2.83V11a3 3 0 0 0-1 2.24V15a3 3 0 0 0 2.5 2.96A4 4 0 0 0 11 22h1a4 4 0 0 0 3.5-4.04A3 3 0 0 0 18 15v-1.76A3 3 0 0 0 17 11v-1.17A3 3 0 0 0 15 7V6a4 4 0 0 0-4-4z"></path></svg>
-          <span>Memory</span>
-        </button>
-      </div>
     </aside>
     <main id="main">
       <div id="topbar">
@@ -38,6 +23,18 @@
           <option value="co_work">Co-Work</option>
           <option value="code">Code</option>
         </select>
+        <div id="topbar-actions">
+          <button id="canvas-btn" class="icon-btn" title="Canvas: a side panel for code Zhora writes, pulled out of the chat for easier reading and copying. Opens automatically when a response includes a code block.">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            <span id="canvas-dot" class="canvas-dot hidden"></span>
+          </button>
+          <button id="tools-btn" class="icon-btn" title="Tools">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          </button>
+          <button id="memory-btn" class="icon-btn" title="Memory">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v1a3 3 0 0 0-2 2.83V11a3 3 0 0 0-1 2.24V15a3 3 0 0 0 2.5 2.96A4 4 0 0 0 11 22h1a4 4 0 0 0 3.5-4.04A3 3 0 0 0 18 15v-1.76A3 3 0 0 0 17 11v-1.17A3 3 0 0 0 15 7V6a4 4 0 0 0-4-4z"></path></svg>
+          </button>
+        </div>
         <button id="settings-btn" class="icon-btn" title="Settings">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
